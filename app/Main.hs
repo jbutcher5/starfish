@@ -12,9 +12,7 @@ value :: Parsec String st Token
 value = choice [number, boolean, expr, nil, ident]
 
 ident :: Parsec String st Token 
-ident = do
-  x <- many1 $ noneOf "()[]{} "
-  return $ Ident x
+ident = Ident <$> many1 (noneOf "()[]{} ")
 
 expr :: Parsec String st Token
 expr = char '(' *> (try cons <|> (Expr <$> values)) <* char ')'

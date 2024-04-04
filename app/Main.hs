@@ -6,7 +6,15 @@ import Data.Maybe (fromMaybe)
 import Data.Char (digitToInt)
 import System.IO
 
-data Token = Ident String | Expr [Token] | Num Float | Nil | Cons Token Token deriving Show
+data Token = Ident String | Expr [Token] | Num Float | Nil | Cons Token Token
+
+instance Show Token where
+  show (Num x) = show x
+  show (Ident x) = x
+  show (Expr (x:xs)) = '(' : foldr (\a acc -> acc ++ " " ++ show a) (show x) xs ++ ")"
+  show (Expr []) = "()"
+  show Nil = "nil"
+  show (Cons a b) = '(' : show a ++ " . " ++ show b ++ ")"
 
 value :: Parsec String st Token 
 value = skipMany space *> choice [number, boolean, expr, nil, ident] <* skipMany space
@@ -53,6 +61,9 @@ main :: IO ()
 main = do
   putStr "> "
   hFlush stdout
-  x <- getLine
-  parseTest values x
+  s <- getLine
+  case parse values "" s of
+    Left err -> print err
+    Right [] -> putStrLn "nil"
+    Right (x:_) -> print x
   main

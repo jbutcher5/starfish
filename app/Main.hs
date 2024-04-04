@@ -9,7 +9,7 @@ import System.IO
 data Token = Ident String | Expr [Token] | Num Float | Nil | Cons Token Token deriving Show
 
 value :: Parsec String st Token 
-value = choice [number, boolean, expr, nil, ident]
+value = skipMany space *> choice [number, boolean, expr, nil, ident] <* skipMany space
 
 ident :: Parsec String st Token 
 ident = Ident <$> many1 (noneOf "()[]{} ")
@@ -32,14 +32,7 @@ number = do
   return . Num . neg . read $ maybe [intial] (intial:) (i <> d)  
 
 cons :: Parsec String st Token
-cons = do
-   string "cons"
-   space
-   x <- value
-   space
-   y <- value
-   optional space
-   return $ Cons x y 
+cons = string "cons" *> (Cons <$> value <*> value)
 
 true :: Parsec String st Token
 true = string "#t" >> pure (Num 1.0)
@@ -54,7 +47,7 @@ nil :: Parsec String st Token
 nil = string "nil" >> pure Nil
 
 values :: Parsec String st [Token]
-values = many (try value <|> skipMany space *> value) 
+values = many value 
 
 main :: IO ()
 main = do

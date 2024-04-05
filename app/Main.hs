@@ -6,13 +6,17 @@ import Data.Maybe (fromMaybe)
 import Data.Char (digitToInt)
 import System.IO
 
+import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
+
+type Environment = Map.HashMap String Token
+
 data Token = Ident String | Expr [Token] | Num Float | Nil | Cons Token Token
 
 instance Show Token where
   show (Num x) = show x
   show (Ident x) = x
   show (Expr (x:xs)) = '(' : foldr (\a acc -> acc ++ " " ++ show a) (show x) xs ++ ")"
-  show (Expr []) = "()"
+  show (Expr []) = "nil"
   show Nil = "nil"
   show (Cons a b) = '(' : show a ++ " . " ++ show b ++ ")"
 
@@ -57,13 +61,20 @@ nil = string "nil" >> pure Nil
 values :: Parsec String st [Token]
 values = many value 
 
-main :: IO ()
-main = do
+eval :: Token -> Environment -> (Token, Environment)
+eval (Expr [Ident "define", Ident x, y]) env = (Nil, Map.insert x (fst $ eval y env) env)
+eval (Ident x) env = (fromMaybe Nil (Map.lookup x env), env)
+eval x env = (x, env)
+
+repl :: Environment -> IO ()
+repl env = do
   putStr "> "
   hFlush stdout
   s <- getLine
-  case parse values "" s of
-    Left err -> print err
-    Right [] -> putStrLn "nil"
-    Right (x:_) -> print x
-  main
+  case parse value "" s of
+    Left err -> print err >> repl env
+    Right x -> let (result, new_env) = eval x env
+               in print result >> repl new_env 
+
+main :: IO ()
+main = repl Map.empty

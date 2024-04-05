@@ -30,6 +30,7 @@ executable haskell-lisp
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:    base ^>=4.15.1.0,
-                      parsec ^>=3.1.17.0
+                      parsec ^>=3.1.17.0,
+                      unordered-containers ^>=0.2.20
     hs-source-dirs:   app
     default-language: Haskell2010

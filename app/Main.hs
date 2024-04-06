@@ -4,13 +4,14 @@ import Text.Parsec
 import Text.Parsec.Char
 import Data.Maybe (fromMaybe)
 import Data.Char (digitToInt)
+import Data.Bool
 import System.IO
 
 import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
 
 type Environment = Map.HashMap String Token
 
-data Token = Ident String | Expr [Token] | Num Float | Nil | Cons Token Token
+data Token = Ident String | Expr [Token] | Num Float | Nil | Boolean Bool | Cons Token Token
 
 instance Show Token where
   show (Num x) = show x
@@ -18,6 +19,8 @@ instance Show Token where
   show (Expr (x:xs)) = '(' : foldr (\a acc -> acc ++ " " ++ show a) (show x) xs ++ ")"
   show (Expr []) = "nil"
   show Nil = "nil"
+  show (Boolean True) = "#t"
+  show (Boolean False) = "#f"
   show (Cons a b) = '(' : show a ++ " . " ++ show b ++ ")"
 
 value :: Parsec String st Token 
@@ -47,13 +50,13 @@ cons :: Parsec String st Token
 cons = string "cons" *> (Cons <$> value <*> value)
 
 true :: Parsec String st Token
-true = string "#t" >> pure (Num 1.0)
+true = string "t" >> pure (Boolean True)
 
 false :: Parsec String st Token
-false = string "#t" >> pure (Num 0.0)
+false = string "f" >> pure (Boolean False) 
 
 boolean :: Parsec String st Token
-boolean = choice [true, false]
+boolean = char '#' >> choice [true, false]
 
 nil :: Parsec String st Token
 nil = string "nil" >> pure Nil
@@ -83,7 +86,7 @@ eval env (Ident x) =
 
 eval env (Expr ((Ident "car"):xs)) =
   do ys <- evalArgs env xs 
-     case xs of
+     case ys of
        [Cons x _] -> Right (x, env)
        _ -> Left "Expected (car list)"
     
@@ -98,7 +101,20 @@ eval env (Expr ((Ident "list"):xs)) =
      case reverse ys of
        [] -> Right (Expr [], env)
        (z:zs) -> Right (foldr Cons (Cons z Nil) zs, env)
-  
+
+eval env (Expr ((Ident "if"):xs)) =
+  case xs of
+    [pred, x, y] -> case evalNoEnv env pred of
+      Right (Boolean True) -> f x
+      Right (Boolean False) -> f y
+      Left err -> Left err
+      _ -> Left "Expected (if bool _ _)"
+    _ -> Left "Expected (if bool _ _)"
+  where
+    f x = do
+      y <- evalNoEnv env x
+      Right (y, env)
+
 eval env (Expr ((Ident "+"):xs)) =
   do ys <- evalArgs env xs
      case ys of

@@ -61,10 +61,51 @@ nil = string "nil" >> pure Nil
 values :: Parsec String st [Token]
 values = many value 
 
-eval :: Token -> Environment -> (Token, Environment)
-eval (Expr [Ident "define", Ident x, y]) env = (Nil, Map.insert x (fst $ eval y env) env)
-eval (Ident x) env = (fromMaybe Nil (Map.lookup x env), env)
-eval x env = (x, env)
+evalArgs :: Environment -> [Token] -> Either String [Token]
+evalArgs env = mapM (evalNoEnv env)
+
+evalNoEnv :: Environment -> Token -> Either String Token
+evalNoEnv env x = fst <$> eval env x
+
+eval :: Environment -> Token -> Either String (Token, Environment)
+
+eval env (Expr ((Ident "define"):xs)) =
+  case xs of
+    [Ident label, x] -> do
+      sexp <- evalNoEnv env x
+      Right (Nil, Map.insert label sexp env)
+    _ -> Left "Expected (define ident _)"
+
+eval env (Ident x) =
+  case Map.lookup x env of
+    Just x -> Right (x, env)
+    _ -> Left "Unbound variable"
+
+eval env (Expr ((Ident "car"):xs)) =
+  do ys <- evalArgs env xs 
+     case xs of
+       [Cons x _] -> Right (x, env)
+       _ -> Left "Expected (car list)"
+    
+eval env (Expr ((Ident "cdr"):xs)) =
+  do ys <- evalArgs env xs
+     case ys of
+       [Cons _ x] -> Right (x, env)
+       _ -> Left "Expected (cdr list)"
+
+eval env (Expr ((Ident "list"):xs)) =
+  do ys <- evalArgs env xs
+     case reverse ys of
+       [] -> Right (Expr [], env)
+       (z:zs) -> Right (foldr Cons (Cons z Nil) zs, env)
+  
+eval env (Expr ((Ident "+"):xs)) =
+  do ys <- evalArgs env xs
+     case ys of
+       [Num x, Num y] -> Right (Num $ x + y, env)
+       _ -> Left "Expected (+ num num)"
+
+eval env x = Right (x, env)
 
 repl :: Environment -> IO ()
 repl env = do
@@ -73,8 +114,9 @@ repl env = do
   s <- getLine
   case parse value "" s of
     Left err -> print err >> repl env
-    Right x -> let (result, new_env) = eval x env
-               in print result >> repl new_env 
+    Right x -> case eval env x of
+                 Right (result, new_env) -> print result >> repl new_env
+                 Left err -> print err >> repl env
 
 main :: IO ()
 main = repl Map.empty

@@ -11,7 +11,7 @@ import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
 
 type Environment = Map.HashMap String Token
 
-data Token = Ident String | Expr [Token] | Num Float | Nil | Boolean Bool | Cons Token Token
+data Token = Ident String | Expr [Token] | Num Float | Nil | Str String | Boolean Bool | Cons Token Token
 
 instance Show Token where
   show (Num x) = show x
@@ -19,6 +19,7 @@ instance Show Token where
   show (Expr (x:xs)) = '(' : foldr (\a acc -> acc ++ " " ++ show a) (show x) xs ++ ")"
   show (Expr []) = "nil"
   show Nil = "nil"
+  show (Str x) = '"':x++"\""
   show (Boolean True) = "#t"
   show (Boolean False) = "#f"
   show (Cons a b) = '(' : show a ++ " . " ++ show b ++ ")"
@@ -48,6 +49,9 @@ number = do
 
 cons :: Parsec String st Token
 cons = string "cons" *> (Cons <$> value <*> value)
+
+str :: Parsec String st Token
+str = char '"' *> (Str <$> (many $ noneOf ['"'])) <* char '"'
 
 true :: Parsec String st Token
 true = string "t" >> pure (Boolean True)
@@ -106,10 +110,10 @@ eval env (Expr ((Ident "cdr"):xs)) =
 
 eval env (Expr ((Ident "list"):xs)) =
   do res <- evalArgs env xs
-     return $ do tokens <- res
-                 case reverse tokens of
+     return $ do token <- res
+                 case reverse token of
                    [] -> Right (Expr [], env)
-                   (z:zs) -> Right (foldr Cons (Cons z Nil) zs, env)
+                   (z:zs) -> Right (foldr Cons (Cons z Nil) (reverse zs), env)
 
 eval env (Expr ((Ident "if"):xs)) =
   case xs of
@@ -136,7 +140,12 @@ eval env (Expr ((Ident "print"):xs)) =
          case res of
            Right x -> print x >> return (Right (Nil, env))
            Left x -> return $ Left x
-    _ -> return $ Left "Expected (print)"
+    _ -> return $ Left "Expected (print _)"
+
+eval env (Expr ((Ident "input"):xs)) =
+  case xs of
+    [] -> (\x -> Right (Str x, env)) <$> getLine
+    _ -> return $ Left "Expected (input)"
 
 eval env x = return $ Right (x, env)
 

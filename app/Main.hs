@@ -11,7 +11,7 @@ import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
 
 type Environment = Map.HashMap String Token
 
-data Token = Ident String | Str String | Expr [Token] | Num Float | Nil | Boolean Bool | Cons Token Token
+data Token = Ident String | Expr [Token] | Num Float | Nil | Str String | Boolean Bool | Cons Token Token
 
 instance Show Token where
   show (Num x) = show x
@@ -53,6 +53,9 @@ str = char '"' *> (Str <$> many (noneOf "\"")) <* char '"'
 cons :: Parsec String st Token
 cons = string "cons" *> (Cons <$> value <*> value)
 
+str :: Parsec String st Token
+str = char '"' *> (Str <$> (many $ noneOf ['"'])) <* char '"'
+
 true :: Parsec String st Token
 true = string "t" >> pure (Boolean True)
 
@@ -68,91 +71,86 @@ nil = string "nil" >> pure Nil
 values :: Parsec String st [Token]
 values = many value 
 
-evalArgs :: Environment -> [Token] -> Either String ([Token], IO ())
-evalArgs env xs = do
-  result <- mapM (evalNoEnv env) xs
-  return (fst <$> result, mapM_ snd result)
+evalArgs :: Environment -> [Token] -> IO (Either String [Token])
+evalArgs env xs = sequence <$> mapM (evalNoEnv env) xs
 
-evalNoEnv :: Environment -> Token -> Either String (Token, IO ())
-evalNoEnv env x = (\(token, io, _) -> (token, io)) <$> eval env x
+evalNoEnv :: Environment -> Token -> IO (Either String Token)
+evalNoEnv env x = (fmap . fmap) fst (eval env x)
 
-eval :: Environment -> Token -> Either String (Token, IO (), Environment)
+eval :: Environment -> Token -> IO (Either String (Token, Environment))
 
 eval env (Expr ((Ident "define"):xs)) =
   case xs of
     [Ident label, x] -> do
-      (sexp, io) <- evalNoEnv env x
-      Right (Nil, io, Map.insert label sexp env)
-    _ -> Left "Expected (define ident _)"
+      res <- evalNoEnv env x
+      return $ do
+        sexp <- res
+        Right (Nil, Map.insert label sexp env)
+    _ -> return $ Left "Expected (define ident _)"
 
 eval env (Ident x) =
-  case Map.lookup x env of
-    Just x -> Right (x, return (), env)
+  return $ case Map.lookup x env of
+    Just x -> Right (x, env)
     _ -> Left "Unbound variable"
 
 eval env (Expr ((Ident "car"):xs)) =
-  do (tokens, io) <- evalArgs env xs 
-     case tokens of
-       [Cons x _] -> Right (x, io, env)
-       _ -> Left "Expected (car list)"
+  case xs of
+    [x] -> do res <- evalNoEnv env x
+              return $ do token <- res
+                          case token of
+                            (Cons x _) -> Right (x, env)
+                            _ -> Left "Expected (car list)"
+    _ -> return $ Left "Expected (car list)"
     
 eval env (Expr ((Ident "cdr"):xs)) =
-  do (tokens, io) <- evalArgs env xs
-     case tokens of
-       [Cons _ x] -> Right (x, io, env)
-       _ -> Left "Expected (cdr list)"
+  case xs of
+    [x] -> do res <- evalNoEnv env x
+              return $ do token <- res
+                          case token of
+                            (Cons _ x) -> Right (x, env)
+                            _ -> Left "Expected (cdr list)"
+    _ -> return $ Left "Expected (cdr list)"
 
 eval env (Expr ((Ident "list"):xs)) =
-  do (tokens, io) <- evalArgs env xs
-     case reverse tokens of
-       [] -> Right (Expr [], io, env)
-       (z:zs) -> Right (foldr Cons (Cons z Nil) zs, io, env)
+  do res <- evalArgs env xs
+     return $ do token <- res
+                 case reverse token of
+                   [] -> Right (Expr [], env)
+                   (z:zs) -> Right (foldr Cons (Cons z Nil) (reverse zs), env)
 
 eval env (Expr ((Ident "if"):xs)) =
   case xs of
-    [pred, x, y] -> case evalNoEnv env pred of
-      Right (Boolean True, io) -> f x io
-      Right (Boolean False, io) -> f y io
-      Left err -> Left err
-      _ -> Left "Expected (if bool _ _)"
-    _ -> Left "Expected (if bool _ _)"
-  where
-    f x io = do
-      (tokens, io2) <- evalNoEnv env x
-      Right (tokens, io >> io2, env)
+    [pred, x, y] ->
+      do res <- evalNoEnv env pred
+         case res of
+           Right (Boolean True) -> eval env x 
+           Right (Boolean False) -> eval env y 
+           Left err -> return $ Left err
+           _ -> return $ Left "Expected (if bool _ _)"
+    _ -> return $ Left "Expected (if bool _ _)"
 
 eval env (Expr ((Ident "+"):xs)) =
-  do (tokens, io) <- evalArgs env xs
-     case tokens of
-       [Num x, Num y] -> Right (Num $ x + y, io, env)
-       _ -> Left "Expected (+ num num)"
+  do res <- evalArgs env xs
+     return $ do ys <- res
+                 case ys of
+                   [Num x, Num y] -> Right (Num $ x + y, env)
+                   _ -> Left "Expected (+ num num)"
 
 eval env (Expr ((Ident "print"):xs)) =
   case xs of
-    [x] -> do
-      (result, io) <- evalNoEnv env x
-      Right (Nil, io >> print result, env)
-    _ -> Left "Expected (print _)"
+    [x] ->
+      do res <- evalNoEnv env x
+         case res of
+           Right x -> print x >> return (Right (Nil, env))
+           Left x -> return $ Left x
+    _ -> return $ Left "Expected (print _)"
 
-eval env (Expr ((Ident "puts"):xs)) = do
+eval env (Expr ((Ident "input"):xs)) =
   case xs of
-    [x] -> do
-      (result, io) <- evalNoEnv env x
-      case result of
-        Str x -> Right (Nil, io >> putStr x, env)
-        _ -> Left "Expected (puts string)"
-    _ -> Left "Expected (puts string)"
+    [] -> (\x -> Right (Str x, env)) <$> getLine
+    _ -> return $ Left "Expected (input)"
 
-eval env (Expr ((Ident "puts-ln"):xs)) = do
-  case xs of
-    [x] -> do
-      (result, io) <- evalNoEnv env x
-      case result of
-        Str x -> Right (Nil, io >> putStrLn x, env)
-        _ -> Left "Expected (puts-ln string)"
-    _ -> Left "Expected (puts-ln string)"
-       
-eval env x = Right (x, return (), env)
+eval env x = return $ Right (x, env)
 
 repl :: Environment -> IO ()
 repl env = do
@@ -161,9 +159,11 @@ repl env = do
   s <- getLine
   case parse value "" s of
     Left err -> print err >> repl env
-    Right x -> case eval env x of
-                 Right (result, io, new_env) -> io >> print result >> repl new_env
-                 Left err -> print err >> repl env
+    Right x -> do
+      result <- eval env x
+      case result of
+        Right (x, new_env) -> print x >> repl new_env
+        Left err -> print err >> repl env
 
 main :: IO ()
 main = repl Map.empty

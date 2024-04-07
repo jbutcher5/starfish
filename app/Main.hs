@@ -129,6 +129,15 @@ eval env (Expr ((Ident "+"):xs)) =
                    [Num x, Num y] -> Right (Num $ x + y, env)
                    _ -> Left "Expected (+ num num)"
 
+eval env (Expr ((Ident "print"):xs)) =
+  case xs of
+    [x] ->
+      do res <- evalNoEnv env x
+         case res of
+           Right x -> print x >> return (Right (Nil, env))
+           Left x -> return $ Left x
+    _ -> return $ Left "Expected (print)"
+
 eval env x = return $ Right (x, env)
 
 repl :: Environment -> IO ()

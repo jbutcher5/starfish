@@ -19,13 +19,13 @@ instance Show Token where
   show (Expr (x:xs)) = '(' : foldr (\a acc -> acc ++ " " ++ show a) (show x) xs ++ ")"
   show (Expr []) = "nil"
   show Nil = "nil"
-  show (Str x) = '"':x++"\""
+  show (Str x) = '"':x ++ "\""
   show (Boolean True) = "#t"
   show (Boolean False) = "#f"
   show (Cons a b) = '(' : show a ++ " . " ++ show b ++ ")"
 
 value :: Parsec String st Token 
-value = skipMany space *> choice [number, boolean, expr, nil, ident] <* skipMany space
+value = skipMany space *> choice [number, str, boolean, expr, nil, ident] <* skipMany space
 
 ident :: Parsec String st Token 
 ident = Ident <$> many1 (noneOf "()[]{} ")
@@ -46,6 +46,9 @@ number = do
   i <- optionMaybe integer
   d <- optionMaybe decimal
   return . Num . neg . read $ maybe [intial] (intial:) (i <> d)  
+
+str :: Parsec String st Token
+str = char '"' *> (Str <$> many (noneOf "\"")) <* char '"'
 
 cons :: Parsec String st Token
 cons = string "cons" *> (Cons <$> value <*> value)

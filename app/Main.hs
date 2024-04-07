@@ -53,9 +53,6 @@ str = char '"' *> (Str <$> many (noneOf "\"")) <* char '"'
 cons :: Parsec String st Token
 cons = string "cons" *> (Cons <$> value <*> value)
 
-str :: Parsec String st Token
-str = char '"' *> (Str <$> (many $ noneOf ['"'])) <* char '"'
-
 true :: Parsec String st Token
 true = string "t" >> pure (Boolean True)
 

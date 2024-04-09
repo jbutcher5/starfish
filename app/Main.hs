@@ -16,7 +16,8 @@ data Token = Ident String | Expr [Token] | Num Float | Nil | Str String | Boolea
 instance Show Token where
   show (Num x) = show x
   show (Ident x) = x
-  show (Expr (x:xs)) = '(' : foldr (\a acc -> acc ++ " " ++ show a) (show x) xs ++ ")"
+  show (Expr ((Ident "quote"):xs)) = '\'' : show (Expr xs)
+  show (Expr (x:xs)) = '(' : foldl (\acc a -> acc ++ " " ++ show a) (show x) xs ++ ")"
   show (Expr []) = "nil"
   show Nil = "nil"
   show (Str x) = '"':x ++ "\""
@@ -24,8 +25,18 @@ instance Show Token where
   show (Boolean False) = "#f"
   show (Cons a b) = '(' : show a ++ " . " ++ show b ++ ")"
 
+toCons :: [Token] -> Token
+toCons [] = Cons Nil Nil
+toCons [x] = Cons x Nil
+toCons (x:xs) = Cons x (toCons xs)
+
+quotedList :: Parsec String st Token
+quotedList = char '\'' *>
+  (try (string "(" *> (toCons <$> values) <* char ')') <|>
+  ((\x -> Expr [Ident "quote", x]) <$> value))
+
 value :: Parsec String st Token 
-value = skipMany space *> choice [number, str, boolean, expr, nil, ident] <* skipMany space
+value = skipMany space *> choice [number, str, boolean, quotedList, expr, nil, ident] <* skipMany space
 
 ident :: Parsec String st Token 
 ident = Ident <$> many1 (noneOf "()[]{} ")
@@ -108,12 +119,20 @@ eval env (Expr ((Ident "cdr"):xs)) =
                             _ -> Left "Expected (cdr list)"
     _ -> return $ Left "Expected (cdr list)"
 
-eval env (Expr ((Ident "list"):xs)) =
-  do res <- evalArgs env xs
-     return $ do token <- res
-                 case reverse token of
-                   [] -> Right (Expr [], env)
-                   (z:zs) -> Right (foldr Cons (Cons z Nil) (reverse zs), env)
+eval env (Expr ((Ident "quote"):xs)) =
+  return $ case xs of
+             [x] -> Right (x, env)
+             _ -> Left "Expected (quote _)"
+
+--eval env (Expr ((Ident "eval"):xs)) =
+--  do args <- 
+  
+-- eval env (Expr ((Ident "list"):xs)) =
+--   do res <- evalArgs env xs
+--      return $ do token <- res
+--                  case reverse token of
+--                    [] -> Right (Expr [], env)
+--                    (z:zs) -> Right (foldr Cons (Cons z Nil) (reverse zs), env)
 
 eval env (Expr ((Ident "if"):xs)) =
   case xs of

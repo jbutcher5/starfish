@@ -11,38 +11,31 @@ import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
 
 type Environment = Map.HashMap String Token
 
-data Token = Ident String | Expr [Token] | Num Float | Nil | Str String | Boolean Bool | Cons Token Token
+data Token = Ident String | Expr [Token] | Num Float | Nil | Str String | Pair Token Token | Boolean Bool
 
 instance Show Token where
   show (Num x) = show x
   show (Ident x) = x
-  show (Expr ((Ident "quote"):xs)) = '\'' : show (Expr xs)
+  show (Expr [Ident "quote", x]) = '\'' : show x
   show (Expr (x:xs)) = '(' : foldl (\acc a -> acc ++ " " ++ show a) (show x) xs ++ ")"
   show (Expr []) = "nil"
+  show (Pair x y) = '(':show x ++ " . " ++ show y ++ ")"
   show Nil = "nil"
   show (Str x) = '"':x ++ "\""
   show (Boolean True) = "#t"
   show (Boolean False) = "#f"
-  show (Cons a b) = '(' : show a ++ " . " ++ show b ++ ")"
 
-toCons :: [Token] -> Token
-toCons [] = Cons Nil Nil
-toCons [x] = Cons x Nil
-toCons (x:xs) = Cons x (toCons xs)
-
-quotedList :: Parsec String st Token
-quotedList = char '\'' *>
-  (try (string "(" *> (toCons <$> values) <* char ')') <|>
-  ((\x -> Expr [Ident "quote", x]) <$> value))
+quote :: Parsec String st Token
+quote = (*>) (char '\'') $ (\x -> Expr [Ident "quote", x]) <$> value
 
 value :: Parsec String st Token 
-value = skipMany space *> choice [number, str, boolean, quotedList, expr, nil, ident] <* skipMany space
+value = skipMany space *> choice [quote, number, str, boolean, expr, nil, ident] <* skipMany space
 
 ident :: Parsec String st Token 
 ident = Ident <$> many1 (noneOf "()[]{} ")
 
 expr :: Parsec String st Token
-expr = char '(' *> (try cons <|> (Expr <$> values)) <* char ')'
+expr = char '(' *> (Expr <$> values) <* char ')'
 
 decimal :: Parsec String st String 
 decimal = (:) <$> char '.' <*> many1 digit
@@ -60,9 +53,6 @@ number = do
 
 str :: Parsec String st Token
 str = char '"' *> (Str <$> many (noneOf "\"")) <* char '"'
-
-cons :: Parsec String st Token
-cons = string "cons" *> (Cons <$> value <*> value)
 
 true :: Parsec String st Token
 true = string "t" >> pure (Boolean True)
@@ -89,10 +79,15 @@ eval :: Environment -> Token -> IO (Either String (Token, Environment))
 
 eval env (Expr ((Ident "define"):xs)) =
   case xs of
+    [Ident label, Ident ident] -> do
+      res <- evalNoEnv env (Ident ident)
+      return $ case res of
+        Right sexp -> Right (Nil, Map.insert label sexp env)
+        Left err -> Left err
     [Ident label, x] -> do
       res <- evalNoEnv env x
       return $ do
-        sexp <- res
+        sexp <- res 
         Right (Nil, Map.insert label sexp env)
     _ -> return $ Left "Expected (define ident _)"
 
@@ -106,7 +101,8 @@ eval env (Expr ((Ident "car"):xs)) =
     [x] -> do res <- evalNoEnv env x
               return $ do token <- res
                           case token of
-                            (Cons x _) -> Right (x, env)
+                            (Pair x _) -> Right (x, env)
+                            (Expr (x:_)) -> Right (x, env)
                             _ -> Left "Expected (car list)"
     _ -> return $ Left "Expected (car list)"
     
@@ -115,7 +111,8 @@ eval env (Expr ((Ident "cdr"):xs)) =
     [x] -> do res <- evalNoEnv env x
               return $ do token <- res
                           case token of
-                            (Cons _ x) -> Right (x, env)
+                            (Pair _ x) -> Right (x, env)
+                            (Expr (_:xs)) -> Right (Expr xs, env)
                             _ -> Left "Expected (cdr list)"
     _ -> return $ Left "Expected (cdr list)"
 
@@ -124,16 +121,22 @@ eval env (Expr ((Ident "quote"):xs)) =
              [x] -> Right (x, env)
              _ -> Left "Expected (quote _)"
 
---eval env (Expr ((Ident "eval"):xs)) =
---  do args <- 
-  
--- eval env (Expr ((Ident "list"):xs)) =
---   do res <- evalArgs env xs
---      return $ do token <- res
---                  case reverse token of
---                    [] -> Right (Expr [], env)
---                    (z:zs) -> Right (foldr Cons (Cons z Nil) (reverse zs), env)
+eval env (Expr ((Ident "cons"):xs)) =
+  do maybe_args <- evalArgs env xs
+     return $ case maybe_args of
+       Right [x, Expr xs] -> Right (Expr (x:xs), env)
+       Right [x, y] -> Right (Pair x y, env)
+       Right _ -> Left "Expected (cons _ _)" 
+       Left err -> Left err
 
+eval env (Expr ((Ident "eval"):xs)) =
+   case xs of
+     [x] -> do y <- evalNoEnv env x
+               case y of
+                 Right z -> eval env z
+                 Left z -> return $ Left z
+     _ -> return $ Left "Expected (eval _)"
+  
 eval env (Expr ((Ident "if"):xs)) =
   case xs of
     [pred, x, y] ->
@@ -165,6 +168,8 @@ eval env (Expr ((Ident "input"):xs)) =
   case xs of
     [] -> (\x -> Right (Str x, env)) <$> getLine
     _ -> return $ Left "Expected (input)"
+
+eval env (Expr _) = return $ Left "Ill-formed expression"
 
 eval env x = return $ Right (x, env)
 

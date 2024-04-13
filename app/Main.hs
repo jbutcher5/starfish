@@ -95,7 +95,7 @@ evalLambda env formals body args =
     bindFormals [] [] acc = acc
     bindFormals (formal:xs) (arg:ys) acc = Map.insert formal arg (bindFormals xs ys acc)
     evalBody :: EnvStack -> [Token] -> IO (Either String Token) -> IO (Either String Token)
-    evalBody envs [] acc = return $ Right Nil
+    evalBody envs [] acc = acc 
     evalBody envs (x:xs) acc = do
       res <- eval envs x
       case res of
@@ -207,12 +207,15 @@ eval env (Expr ((Ident "input"):xs)) =
     [] -> (\x -> Right (Str x, env)) <$> getLine
     _ -> return $ Left "Expected (input)"
 
-eval env (Expr ((Ident ident):xs)) =
-  case searchEnv env ident of
-    Just (Lambda formals args) -> fmap (\x -> (x, env)) <$> evalLambda env formals args xs
-    _ -> return $ Left "Blahhhh"
-
-eval env (Expr _) = return $ Left "Ill-formed expression"
+eval env (Expr (x:args)) = do
+  first <- evalNoEnv env x
+  case first of
+    Right (Lambda formals body) -> do
+      args' <- evalArgs env args
+      case args' of
+        Right args'' -> fmap (\x -> (x, env)) <$> evalLambda env formals body args''
+        Left err -> return $ Left err
+    _ -> return $ Left "Ill-formed expression"
 
 eval env x = return $ Right (x, env)
 

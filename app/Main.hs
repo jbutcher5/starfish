@@ -19,7 +19,8 @@ instance Show Token where
   show (Ident x) = x
   show (Expr [Ident "quote", x]) = '\'' : show x
   show (Expr (x:xs)) = '(' : foldl (\acc a -> acc ++ " " ++ show a) (show x) xs ++ ")"
-  show (Lambda _ _) = "#lambda"
+  show (Lambda formals (x:xs)) = "(lambda " ++ (show . Expr $ map Ident formals) ++ " " ++ foldl (\acc a -> acc ++ " " ++ show a) (show x) xs ++ ")"
+  show (Lambda formals []) = "(lambda " ++ (show . Expr $ map Ident formals) ++ " nil)" 
   show (Expr []) = "nil"
   show (Pair x y) = '(':show x ++ " . " ++ show y ++ ")"
   show Nil = "nil"

@@ -89,12 +89,15 @@ evalLambda :: EnvStack -> [String] -> [Token] -> [Token] -> IO (Either String To
 evalLambda env formals body args =
   if length formals == length args
      then evalBody new_env body (return $ Right Nil)
-     else return $ Left $ "(not (eq? (length formals) (length args)))" ++ " " ++ show formals ++ " " ++ show args
+     else return . Left $
+          "(not (eq? (length formals) (length args))) " ++ show formals ++ " " ++ show args
   where
     new_env = bindFormals formals args Map.empty : env
+
     bindFormals :: [String] -> [Token] -> Environment -> Environment
     bindFormals [] [] acc = acc
     bindFormals (formal:xs) (arg:ys) acc = Map.insert formal arg (bindFormals xs ys acc)
+    
     evalBody :: EnvStack -> [Token] -> IO (Either String Token) -> IO (Either String Token)
     evalBody envs [] acc = acc 
     evalBody envs (x:xs) acc = do

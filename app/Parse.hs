@@ -3,7 +3,10 @@ module Parse where
 import Text.Parsec
 import Text.Parsec.Char
 
-data Token = Ident String | Expr [Token] | Num Float | Nil | Str String | Pair Token Token | Lambda [String] [Token] | Boolean Bool
+data Token = Ident String | Expr [Token] |
+             Num Float | Nil |
+             Str String | Pair Token Token |
+             Lambda [String] [Token] | Boolean Bool
 
 instance Show Token where
   show (Num x) = show x
@@ -23,7 +26,7 @@ quote :: Parsec String st Token
 quote = (*>) (char '\'') $ (\x -> Expr [Ident "quote", x]) <$> value
 
 value :: Parsec String st Token 
-value = skipMany space *> choice [quote, number, str, boolean, expr, nil, ident] <* skipMany space
+value = skipMany space *> choice [quote, number, str, boolean, expr, nil, ident] <* skipMany space 
 
 ident :: Parsec String st Token 
 ident = Ident <$> many1 (noneOf "()[]{} ")
@@ -61,4 +64,4 @@ nil :: Parsec String st Token
 nil = string "nil" >> pure Nil
 
 values :: Parsec String st [Token]
-values = many value 
+values = many value

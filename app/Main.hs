@@ -8,6 +8,8 @@ import Text.Parsec (parse)
 import System.IO
 import System.Environment (getArgs)
 
+import Data.Char (ord)
+
 repl :: EnvStack -> IO ()
 repl env = do
   putStr "> "

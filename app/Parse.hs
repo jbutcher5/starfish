@@ -6,27 +6,32 @@ import Text.Parsec.Char
 data Token = Ident String | Expr [Token] |
              Num Float | Nil |
              Str String | Pair Token Token |
-             Lambda [String] [Token] | Boolean Bool
+             Lambda [String] [Token] | Boolean Bool |
+             Macro [String] [Token] deriving Eq
+
+showBody :: [Token] -> String
+showBody (x:xs) = foldl (\acc a -> acc ++ " " ++ show a) (show x) xs
+showBody [] = "nil"
 
 instance Show Token where
   show (Num x) = show x
   show (Ident x) = x
-  show (Expr [Ident "quote", x]) = '\'' : show x
+  show (Expr (Ident "quote":xs)) = '\'' : showBody xs 
   show (Expr (x:xs)) = '(' : foldl (\acc a -> acc ++ " " ++ show a) (show x) xs ++ ")"
-  show (Lambda formals (x:xs)) = "(lambda " ++ (show . Expr $ map Ident formals) ++ " " ++ foldl (\acc a -> acc ++ " " ++ show a) (show x) xs ++ ")"
-  show (Lambda formals []) = "(lambda " ++ (show . Expr $ map Ident formals) ++ " nil)" 
+  show (Lambda formals body) = "(lambda " ++ (show . Expr $ map Ident formals) ++ " " ++ showBody body ++ ")"
   show (Expr []) = "nil"
   show (Pair x y) = '(':show x ++ " . " ++ show y ++ ")"
   show Nil = "nil"
   show (Str x) = '"':x ++ "\""
   show (Boolean True) = "#t"
   show (Boolean False) = "#f"
-
+  show (Macro formals body) = "(defmacro " ++ (show . Expr $ map Ident formals) ++ " " ++ showBody body ++ ")"
+    
 quote :: Parsec String st Token
 quote = (*>) (char '\'') $ (\x -> Expr [Ident "quote", x]) <$> value
 
 value :: Parsec String st Token 
-value = skipMany space *> choice [quote, number, str, boolean, expr, nil, ident] <* skipMany space 
+value = skipMany space *> choice [quote, number, str, boolean, expr, nil, ident] <* skipMany space
 
 ident :: Parsec String st Token 
 ident = Ident <$> many1 (noneOf "()[]{} ")

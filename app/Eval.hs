@@ -11,6 +11,22 @@ import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
 type Environment = Map.HashMap String Token
 type EnvStack = [Environment]
 
+-- lastItem :: [a] -> Maybe a
+-- lastItem xs = f $ reverse xs
+--   where f (x:_) = Just x
+--         f [] = Nothing
+
+-- isTailRecursive :: EnvStack -> [Token] -> Bool
+-- isTailRecursive env body =
+--   case lastExpr of
+--     Just (Lambda formals body') -> body == body'
+--     _ -> False
+--   where
+--     lastExpr :: Maybe Token
+--     lastExpr = lastItem body 
+
+
+
 searchEnv :: EnvStack -> String -> Maybe Token
 searchEnv [] _ = Nothing
 searchEnv (x:xs) ident =
@@ -36,7 +52,7 @@ evalLambda env formals body args =
     bindFormals :: [String] -> [Token] -> Environment -> Environment
     bindFormals [] [] acc = acc
     bindFormals (formal:xs) (arg:ys) acc = Map.insert formal arg (bindFormals xs ys acc)
-    
+
     evalBody :: EnvStack -> [Token] -> IO (Either String Token) -> IO (Either String Token)
     evalBody envs [] acc = acc 
     evalBody envs (x:xs) acc = do
@@ -44,9 +60,20 @@ evalLambda env formals body args =
       case res of
         Right (token, envs') -> evalBody envs' xs (pure $ Right token)
         Left err -> return $ Left err
-    
+
+reduceFormals :: [Token] -> [String] -> Maybe [String]
+reduceFormals [] acc = Just acc
+reduceFormals (Ident x : xs) acc = reduceFormals xs $ acc ++ [x]
+reduceFormals _ _ = Nothing
 
 eval :: EnvStack -> Token -> IO (Either String (Token, EnvStack))
+
+eval env (Expr ((Ident "defmacro"):xs)) =
+  return $ case xs of
+    (Expr formals:body) -> case reduceFormals formals [] of
+      Just x -> Right (Macro x body, env)
+      _ -> Left "Expected (defmacro (ident ...) _ ...)"
+    _ -> Left "Expected (lambda sexp _ ...)"
 
 eval env (Expr ((Ident "lambda"):xs)) =
   return $ case xs of
@@ -54,11 +81,6 @@ eval env (Expr ((Ident "lambda"):xs)) =
       Just x -> Right (Lambda x body, env)
       _ -> Left "Expect (lambda (ident ...) _ ...)"
     _ -> Left "Expected (lambda sexp _ ...)"
-    where
-      reduceFormals :: [Token] -> [String] -> Maybe [String]
-      reduceFormals [] acc = Just acc
-      reduceFormals (Ident x : xs) acc = reduceFormals xs $ acc ++ [x]
-      reduceFormals _ _ = Nothing
 
 eval env (Expr ((Lambda formals args):xs)) =
   fmap (\x -> (x, env)) <$> evalLambda env formals args xs

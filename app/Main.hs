@@ -2,13 +2,12 @@ module Main where
 
 import Parse (Token (..), value, values)
 import Eval (EnvStack, eval)
+import Compile (compile)
 
 import Data.HashMap.Strict (empty) 
 import Text.Parsec (parse)
 import System.IO
 import System.Environment (getArgs)
-
-import Data.Char (ord)
 
 repl :: EnvStack -> IO ()
 repl env = do
@@ -37,12 +36,23 @@ evalLines content = do
         Left err -> putStr err
         Right (_, env) -> evalValues xs $ eval env x
 
+compileLines :: String -> IO ()
+compileLines content = do
+  case parse values "" content of
+    Left err -> print err
+    Right xs -> case compile xs of
+      Just program -> writeFile "comp.asm" program
+      Nothing -> print "idfk" 
+
 main :: IO ()
 main = do
   args <- getArgs
   case args of
-    [path] -> do
+    ["i", path] -> do
       contents <- readFile path
       evalLines contents
+    ["c", path] -> do
+      contents <- readFile path
+      compileLines contents
     [] -> repl [empty]
     _ -> putStr "Could not resolve query"

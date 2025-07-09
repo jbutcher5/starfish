@@ -25,12 +25,13 @@ executable haskell-lisp
     main-is:          Main.hs
 
     -- Modules included in this executable, other than Main.
-    other-modules:    Parse,
+    other-modules:    Compile,
+                      Parse,
                       Eval
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
-    build-depends:    base ^>=4.15.1.0,
+    build-depends:    base ^>=4.17.2.1,
                       parsec ^>=3.1.17.0,
                       unordered-containers ^>=0.2.20
     hs-source-dirs:   app

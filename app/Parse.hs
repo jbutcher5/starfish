@@ -31,10 +31,10 @@ quote :: Parsec String st Token
 quote = (*>) (char '\'') $ (\x -> Expr [Ident "quote", x]) <$> value
 
 value :: Parsec String st Token 
-value = skipMany space *> choice [quote, number, str, boolean, expr, nil, ident] <* skipMany space
+value = skipMany (oneOf " \n") *> choice [quote, number, str, boolean, expr, nil, ident] <* skipMany (oneOf " \n")
 
 ident :: Parsec String st Token 
-ident = Ident <$> many1 (noneOf "()[]{} ")
+ident = Ident <$> many1 (noneOf "()[]{} \n")
 
 expr :: Parsec String st Token
 expr = char '(' *> (Expr <$> values) <* char ')'

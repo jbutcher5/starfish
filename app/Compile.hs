@@ -3,7 +3,7 @@ module Compile where
 import Parse (Token (..))
 import GHC.Float (float2Int)
 
-data IR = Func String [IR] | Variable String Int Int | Call String
+data IR = Func String [IR] | Variable String Int Int | Call String | Inline String
 
 token2ir :: Token -> Maybe IR
 token2ir (Expr ((Ident "define"):xs)) =
@@ -12,7 +12,8 @@ token2ir (Expr ((Ident "define"):xs)) =
     _ -> Nothing
 token2ir (Expr ((Ident "defun"):(Ident name):xs)) = do
   ys <- mapM token2ir xs
-  Just $ Func name ys 
+  Just $ Func name ys
+token2ir (Expr [Ident "asm", Str asm]) = Just $ Inline asm
 token2ir _ = Nothing
 
 instr2asm :: IR -> Int -> (String, Int)
@@ -20,10 +21,11 @@ instr2asm (Variable ident b x) rbp
   = ("mov DWORD [rbp-" <> show (rbp + b) <> "], " <> show x, b)
 instr2asm (Func name body) rbp
   = (name <> ":\npush rbp\nmov rbp, rsp" <> ir2asm body <> "\npop rbp\nret", 0)
+instr2asm (Inline asm) _ = (asm, 0)
 instr2asm _ _ = ("", 0)
 
 accumulate :: IR -> (String, Int) -> (String, Int)
-accumulate ir (program, rbp) = (program <> "\n" <> asm, rbp + offset)
+accumulate ir (program, rbp) = ("\n" <> asm <> "\n" <> program, rbp + offset)
   where (asm, offset) = instr2asm ir rbp 
 
 ir2asm :: [IR] -> String

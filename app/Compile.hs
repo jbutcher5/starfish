@@ -2,7 +2,8 @@ module Compile where
 
 import Parse (Token (..))
 import GHC.Float (float2Int)
-import Data.Bits ((.&.))  
+import Data.Bits ((.&.))
+import Debug.Trace (trace)
 
 data IR = FrameFunc String Word [IR] |
           LeafFunc String [IR] |
@@ -27,7 +28,7 @@ token2ir (Num x) = Just . Immediate $ float2Int x
 token2ir (Expr ((Ident fname):xs)) = do
   ys <- mapM token2ir xs
   Just $ Call fname ys
-token2ir _ = Nothing
+token2ir x = trace (show x) Nothing
 
 instr2asm :: IR -> String
 instr2asm (Immediate x) = "\nmov rax, " <> show x
@@ -36,22 +37,17 @@ instr2asm (Variable ident bytes rbp x)
 instr2asm (FrameFunc name space body) 
   = "\n" <> name <> ":\npush rbp\nmov rbp, rsp\nsub rsp, " <> show space <> ir2asm body <> "\nleave\nret"
 instr2asm (Inline asm) = "\n" <> asm
-instr2asm (Call fname args) = "\ncall " <> fname
+--instr2asm (Call fname args) = "\ncall " <> fname
 
 -- TODO: Implement function calls 
--- instr2asm (Call fname args) _ = (buildParams args <> "call " <> fname, 0)
---   where
---     paramRegister = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"]
---     buildParams :: [IR] -> String
---     buildParams = setupParams . zip . paramRegister 
+instr2asm (Call fname args) = buildParams args <> "\ncall " <> fname
+  where
+    paramRegister = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"]
+    buildParams :: [IR] -> String
+    buildParams = setupParams . zip paramRegister 
 
---     setupParams :: [(String, IR)] -> String
---     setupParams x = setupParams' x ""
-    
---     setupParams' :: [(String, IR)] -> String -> String
---     setupParams' [] acc = acc
---     setupParams' ((reg, ir):xs) acc = setupParams xs
---      $ acc <> (fst $ instr2asm ir) <> "\nmov " <> reg <> " rax"
+    setupParams :: [(String, IR)] -> String
+    setupParams = foldr (\(reg, ir) acc -> acc <> instr2asm ir <> "\nmov " <> reg <> ", rax") ""
 
 instr2asm _ = ""
 

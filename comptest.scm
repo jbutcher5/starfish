@@ -1,6 +1,7 @@
+(asm "extern exit")
+
 (defun _start
   (define x
     4)
-  (asm "mov rax, 60
-mov rdi, 0
-syscall"))
+  (asm "mov rdi, 4")
+  (exit))

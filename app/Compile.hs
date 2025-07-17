@@ -8,6 +8,8 @@ import Debug.Trace (trace)
 
 import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
 
+import Control.Monad.State (State, get, put, evalState)
+
 type Environment = Map.HashMap String Word
 
 data IR = FrameFunc String Word [IR] |
@@ -17,7 +19,7 @@ data IR = FrameFunc String Word [IR] |
           VarRef String |
           Inline String | Immediate Int deriving (Show)
 
-data LowerIR = LoadVar String | Label String | Enter Word | Leave | Mov String String | AsmCall String | AsmInline String
+data LowerIR = StackRef Word | LoadVar String | Var String Word Word | Label String | Enter Word | Leave | Mov String String | AsmCall String | AsmInline String deriving (Show)
 
 -- Phase 1: Convert to a more meaningful IR
 
@@ -47,8 +49,8 @@ lowerIR :: IR -> [LowerIR]
 lowerIR (FrameFunc fname reserved body) =
   [Label fname, Enter reserved] <> bodyir <> [Leave]
   where bodyir = concatMap lowerIR body :: [LowerIR]
-lowerIR (Variable name size offset value) =
-  lowerIR value <> [Mov ("[rbp-" ++ show offset ++ "]") "rax"]
+lowerIR (Variable name size offset ir) =
+  lowerIR ir <> [Var name size offset]
 lowerIR (Call fname args) = buildParams args <> [AsmCall fname]
     where
     paramRegister = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"]
@@ -62,20 +64,38 @@ lowerIR (VarRef ident) = [LoadVar ident]
 lowerIR (Inline asm) = [AsmInline asm] 
 lowerIR x = trace ("lowerIR error in token: " ++ show x) []
 
+-- Phase 2.5: Replace variables
+
+replaceIdents :: [LowerIR] -> State (Environment, [LowerIR]) [LowerIR]
+replaceIdents [] = do
+  (_, ir) <- get
+  return ir
+replaceIdents (x:xs) = do
+  (env, ir) <- get
+  case x of
+    LoadVar ident -> put (env, ir ++ [StackRef . fromJust $ Map.lookup ident env])
+    v@(Var ident size offset) -> put (Map.insert ident offset env, ir ++ [v])
+    x -> put (env, ir ++ [x])
+  replaceIdents xs
+
 -- Phase 3: Convert IR to Assembly
 
 lowerIR2asm :: LowerIR -> String
-
-lowerIR2asm (LoadVar ident) = trace "fuck" ""
+lowerIR2asm (Var _ size offset) = "\nmov [rbp-" ++ show offset ++ "], rax"
+lowerIR2asm (StackRef offset) = "\nmov rax, [rbp-" ++ show offset ++ "]"
 lowerIR2asm (Label ident) = "\n" ++ ident ++ ":"
 lowerIR2asm (Enter reserved) = "\npush rbp\nmov rbp, rsp\nsub rsp, " ++ show reserved
 lowerIR2asm Leave = "\nleave"
 lowerIR2asm (Mov to from) = "\nmov " ++ to ++ ", " ++ from
 lowerIR2asm (AsmCall ident) = "\ncall " ++ ident
 lowerIR2asm (AsmInline asm) = "\n" ++ asm
+lowerIR2asm x = trace (show x) ""
 
 compile :: [Token] -> Maybe String
 compile tokens = do
   ir <- mapM token2ir tokens
-  let asm = concatMap lowerIR2asm $ concatMap lowerIR ir
+  let
+    lowerir = concatMap lowerIR ir
+    lowerir' = evalState (replaceIdents lowerir) (Map.empty, [])
+    asm = concatMap lowerIR2asm lowerir' 
   Just $ "global _start\nsection .text" <> asm

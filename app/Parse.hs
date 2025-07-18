@@ -19,7 +19,7 @@ instance Show Token where
   show (Expr (Ident "quote":xs)) = '\'' : showBody xs 
   show (Expr (x:xs)) = '(' : foldl (\acc a -> acc ++ " " ++ show a) (show x) xs ++ ")"
   show (Lambda formals body) = "(lambda " ++ (show . Expr $ map Ident formals) ++ " " ++ showBody body ++ ")"
-  show (Expr []) = "nil"
+  show (Expr []) = "()"
   show (Pair x y) = '(':show x ++ " . " ++ show y ++ ")"
   show Nil = "nil"
   show (Str x) = '"':x ++ "\""
@@ -31,7 +31,7 @@ quote :: Parsec String st Token
 quote = (*>) (char '\'') $ (\x -> Expr [Ident "quote", x]) <$> value
 
 value :: Parsec String st Token 
-value = skipMany (oneOf " \n") *> choice [quote, number, str, boolean, expr, nil, ident] <* skipMany (oneOf " \n")
+value = skipMany (oneOf " \n") *> choice [quote, number, str, boolean, expr, ident, nil] <* skipMany (oneOf " \n")
 
 ident :: Parsec String st Token 
 ident = Ident <$> many1 (noneOf "()[]{} \n")

@@ -59,12 +59,12 @@ lowerIR (FrameFunc fname args body) =
         (reserved, bodyir') = evalState (calcReserved (args, bodyir)) (0, [])
 
         calcReserved :: ([ParamReg], [LowerIR]) -> State (Word, [LowerIR]) (Word, [LowerIR])
-        calcReserved (((reg, param):xs), ir) = do
+        calcReserved ((reg, param):xs, ir) = do
           (res, ir') <- get
           let offset = res + 4
           put (offset, ir' ++ [Mov "eax" reg, Var param offset])
           calcReserved (xs, ir)
-        calcReserved ([], (x:xs)) = do
+        calcReserved ([], x:xs) = do
           (res, ir') <- get
           let (offset, x') = case x of
                 Var ident _ -> (res + 4, Var ident $ res + 4)

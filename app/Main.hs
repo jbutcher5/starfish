@@ -36,12 +36,12 @@ evalLines content = do
         Left err -> putStr err
         Right (_, env) -> evalValues xs $ eval env x
 
-compileLines :: String -> IO ()
-compileLines content = do
+compileLines :: String -> String -> IO ()
+compileLines content output = do
   case parse values "" content of
     Left err -> print err
     Right xs -> case compile xs of
-      Just program -> writeFile "comp.asm" program
+      Just program -> writeFile output program
       Nothing -> print "idfk" 
 
 main :: IO ()
@@ -51,8 +51,11 @@ main = do
     ["i", path] -> do
       contents <- readFile path
       evalLines contents
+    ["c", path, output] -> do
+      contents <- readFile path
+      compileLines contents output
     ["c", path] -> do
       contents <- readFile path
-      compileLines contents
+      compileLines contents "out.asm"
     [] -> repl [empty]
     _ -> putStr "Could not resolve query"

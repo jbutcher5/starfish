@@ -3,6 +3,9 @@
 module Compile where
 
 import Parse (Token (..))
+import Assembler (Asm, movFolding, generateAsm)
+import qualified Assembler as Asm (Asm (..))
+
 import GHC.Float (float2Int)
 import Data.Bits ((.&.))
 import Data.Maybe (fromJust)
@@ -21,7 +24,7 @@ data IR = FrameFunc String [(String, String)] [IR] |
           VarRef String |
           Inline String | Immediate Int deriving (Show)
 
-data LowerIR = StackRef Word | LoadVar String | Var String Word | Label String | Enter Word | Leave | Mov String String | AsmCall String | AsmInline String deriving (Show)
+data LowerIR = StackRef Word | LoadVar String | Var String Word | Label String | Enter Word | Leave | MovReg String String | AsmCall String | AsmInline String deriving (Show)
 
 -- Phase 1: Convert to a more meaningful IR
 
@@ -62,7 +65,7 @@ lowerIR (FrameFunc fname args body) =
         calcReserved ((reg, param):xs, ir) = do
           (res, ir') <- get
           let offset = res + 4
-          put (offset, ir' ++ [Mov "eax" reg, Var param offset])
+          put (offset, ir' ++ [MovReg "eax" reg, Var param offset])
           calcReserved (xs, ir)
         calcReserved ([], x:xs) = do
           (res, ir') <- get
@@ -83,8 +86,8 @@ lowerIR (Call fname args) = buildParams args <> [AsmCall fname]
     buildParams :: [IR] -> [LowerIR]
     buildParams = setupParams . zip paramRegister
     setupParams :: [(String, IR)] -> [LowerIR] 
-    setupParams = foldr (\(reg, ir) acc -> acc <> lowerIR ir <> [Mov reg "eax"]) []
-lowerIR (Immediate v) = [Mov "eax" $ show v]
+    setupParams = foldr (\(reg, ir) acc -> acc <> lowerIR ir <> [MovReg reg "eax"]) []
+lowerIR (Immediate v) = [MovReg "eax" $ show v]
 lowerIR (VarRef ident) = [LoadVar ident]
 lowerIR (Inline asm) = [AsmInline asm] 
 lowerIR x = trace ("lowerIR error in token: " ++ show x) []
@@ -106,16 +109,16 @@ replaceIdents (x:xs) = do
 
 -- Phase 3: Convert IR to Assembly
 
-lowerIR2asm :: LowerIR -> String
-lowerIR2asm (Var _ offset) = "\nmov [rbp-" ++ show offset ++ "], eax"
-lowerIR2asm (StackRef offset) = "\nmov eax, [rbp-" ++ show offset ++ "]"
-lowerIR2asm (Label ident) = "\n" ++ ident ++ ":"
-lowerIR2asm (Enter reserved) = "\npush rbp\nmov rbp, rsp\nsub rsp, " ++ show reserved
-lowerIR2asm Leave = "\nmov rsp, rbp\npop rbp\nret"
-lowerIR2asm (Mov to from) = "\nmov " ++ to ++ ", " ++ from
-lowerIR2asm (AsmCall ident) = "\ncall " ++ ident
-lowerIR2asm (AsmInline asm) = "\n" ++ asm
-lowerIR2asm x = trace (show x) ""
+lowerIR2asm :: LowerIR -> [Asm]
+lowerIR2asm (Var _ offset) = [Asm.Mov ("[rbp-" ++ show offset ++ "]") "eax"]
+lowerIR2asm (StackRef offset) = [Asm.Mov "eax" $ "[rbp-" ++ show offset ++ "]"]
+lowerIR2asm (Label ident) = [Asm.Label ident]
+lowerIR2asm (Enter reserved) = [Asm.Push "rbp", Asm.Mov "rbp" "rsp", Asm.Sub "rsp" $ show reserved]
+lowerIR2asm Leave = [Asm.Mov "rsp" "rbp", Asm.Pop "rbp", Asm.Ret]
+lowerIR2asm (MovReg to from) = [Asm.Mov to from] 
+lowerIR2asm (AsmCall ident) = [Asm.Call ident]
+lowerIR2asm (AsmInline asm) = [Asm.Inline asm]
+lowerIR2asm x = trace (show x) []
 
 compile :: [Token] -> Maybe String
 compile tokens = do
@@ -123,5 +126,5 @@ compile tokens = do
   let
     lowerir = concatMap lowerIR ir
     lowerir' = evalState (replaceIdents lowerir) (Map.empty, [])
-    asm = concatMap lowerIR2asm lowerir' 
-  Just $ "global _start\nsection .text" <> asm
+    asm = concatMap lowerIR2asm lowerir' :: [Asm]
+  Just $ generateAsm $ movFolding asm []

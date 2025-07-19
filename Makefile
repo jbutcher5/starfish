@@ -1,8 +1,8 @@
-comp: comp.o
-	gcc -no-pie -nostartfiles -o comp comp.o
+out: out.o
+	gcc -no-pie -nostartfiles -o out out.o
 
-comp.o: comp.asm
-	yasm -f elf64 -o comp.o comp.asm
+out.o: out.asm
+	yasm -f elf64 -o out.o out.asm
 
-comp.asm: app/Compile.hs
-	cabal run exes -- c comptest.scm
+out.asm: app/Compile.hs app/Assembler.hs
+	cabal run exes -- c comptest.star

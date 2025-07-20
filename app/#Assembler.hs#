@@ -1,5 +1,7 @@
 module Assembler where
 
+data Reg = Stack Word | Acc |  
+
 data Asm = Mov String String |
            Call String | Lea String String |
            Label String | Ret | Sub String String |

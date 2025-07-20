@@ -17,14 +17,19 @@ import Control.Monad.State (State, get, put, evalState)
 
 type Environment = Map.HashMap String Word
 
-data IR = FrameFunc String [(String, String)] [IR] |
+data IR = Extern [String] |
+          FrameFunc String [(String, String)] [IR] |
           LeafFunc String [(String, String)] [IR] |
-          Variable String Word IR |
+          Variable String Word Word IR |
           Call String [IR] |
           VarRef String |
-          Inline String | Immediate Int deriving (Show)
+          Inline String |
+          Ref String |
+          Deref IR |
+          Immediate Int
+          deriving (Show)
 
-data LowerIR = StackRef Word | LoadVar String | Var String Word | Label String | Enter Word | Leave | MovReg String String | AsmCall String | AsmInline String deriving (Show)
+data LowerIR = StackRef Word | LoadRef String | Lea Word | LoadVar String | Var String Word Word | Label String | Enter Word | Leave | MovReg String String | AsmCall String | AsmInline String deriving (Show)
 
 -- Phase 1: Convert to a more meaningful IR
 
@@ -33,7 +38,7 @@ token2ir (Expr ((Ident "define"):xs)) = do
   case xs of
     [Ident label, token] -> do
       ir <- token2ir token 
-      Just $ Variable label 0 ir 
+      Just $ Variable label 4 0 ir 
     _ -> Nothing
 token2ir (Expr ((Ident "defun"):(Ident name):(Expr args):xs)) = do
   ys <- mapM token2ir xs
@@ -45,6 +50,17 @@ token2ir (Expr ((Ident "defun"):(Ident name):(Expr args):xs)) = do
     argReg = zip paramRegister t :: [(String, String)]
   Just $ FrameFunc name argReg ys 
 token2ir (Expr [Ident "asm", Str asm]) = Just $ Inline asm
+token2ir (Expr [Ident "ref", expr]) = do
+  ir <- token2ir expr
+  case ir of
+    VarRef str -> Just $ Ref str
+    _ -> Nothing
+token2ir (Expr [Ident "deref", expr]) = do
+  ir <- token2ir expr
+  Just $ Deref ir
+token2ir (Expr (Ident "extern":externs)) = Just . Extern $ (\case
+            Ident str -> str
+            _ -> "") <$> externs
 token2ir (Num x) = Just . Immediate $ float2Int x
 token2ir (Ident x) = Just $ VarRef x
 token2ir (Expr ((Ident fname):xs)) = do
@@ -61,16 +77,18 @@ lowerIR (FrameFunc fname args body) =
   where bodyir = concatMap lowerIR body :: [LowerIR]
         (reserved, bodyir') = evalState (calcReserved (args, bodyir)) (0, [])
 
+        -- Calculate how much stack space is needed for each function
+        -- Also, update variable offsets
         calcReserved :: ([ParamReg], [LowerIR]) -> State (Word, [LowerIR]) (Word, [LowerIR])
         calcReserved ((reg, param):xs, ir) = do
           (res, ir') <- get
-          let offset = res + 4
-          put (offset, ir' ++ [MovReg "eax" reg, Var param offset])
+          let offset = res + 4 -- TODO: Remove and size parameters sometimes
+          put (offset, ir' ++ [MovReg "eax" reg, Var param 4 offset])
           calcReserved (xs, ir)
         calcReserved ([], x:xs) = do
           (res, ir') <- get
           let (offset, x') = case x of
-                Var ident _ -> (res + 4, Var ident $ res + 4)
+                Var ident size _ -> (res + size, Var ident size $ res + size)
                 _ -> (res, x)
           put (offset, ir' ++ [x'])
           calcReserved ([], xs)
@@ -78,8 +96,8 @@ lowerIR (FrameFunc fname args body) =
 
         next16 b = (0xFFFFFFFFFFFFFFF0 .&. b) + 16
         
-lowerIR (Variable name reg ir) =
-  lowerIR ir <> [Var name reg]
+lowerIR (Variable name size reg ir) =
+  lowerIR ir <> [Var name size reg]
 lowerIR (Call fname args) = buildParams args <> [AsmCall fname]
     where
     paramRegister = ["edi", "esi", "edx", "ecx", "r8d", "r9d"]
@@ -89,6 +107,8 @@ lowerIR (Call fname args) = buildParams args <> [AsmCall fname]
     setupParams = foldr (\(reg, ir) acc -> acc <> lowerIR ir <> [MovReg reg "eax"]) []
 lowerIR (Immediate v) = [MovReg "eax" $ show v]
 lowerIR (VarRef ident) = [LoadVar ident]
+lowerIR (Ref ident) = [LoadRef ident]
+lowerIR (Deref ir) = lowerIR ir <> [MovReg "eax" "[eax]"]
 lowerIR (Inline asm) = [AsmInline asm] 
 lowerIR x = trace ("lowerIR error in token: " ++ show x) []
 
@@ -102,7 +122,8 @@ replaceIdents (x:xs) = do
   (env, ir) <- get
   case x of
     LoadVar ident -> put (env, ir ++ [StackRef . fromJust $ Map.lookup ident env])
-    v@(Var ident offset) -> put (Map.insert ident offset env, ir ++ [v])
+    LoadRef ident -> put (env, ir ++ [Lea . fromJust $ Map.lookup ident env])
+    v@(Var ident _ offset) -> put (Map.insert ident offset env, ir ++ [v])
     Leave -> put (Map.empty, ir ++ [Leave])
     x -> put (env, ir ++ [x])
   replaceIdents xs
@@ -110,12 +131,13 @@ replaceIdents (x:xs) = do
 -- Phase 3: Convert IR to Assembly
 
 lowerIR2asm :: LowerIR -> [Asm]
-lowerIR2asm (Var _ offset) = [Asm.Mov ("[rbp-" ++ show offset ++ "]") "eax"]
+lowerIR2asm (Var _ _ offset) = [Asm.Mov ("[rbp-" ++ show offset ++ "]") "eax"]
 lowerIR2asm (StackRef offset) = [Asm.Mov "eax" $ "[rbp-" ++ show offset ++ "]"]
 lowerIR2asm (Label ident) = [Asm.Label ident]
 lowerIR2asm (Enter reserved) = [Asm.Push "rbp", Asm.Mov "rbp" "rsp", Asm.Sub "rsp" $ show reserved]
 lowerIR2asm Leave = [Asm.Mov "rsp" "rbp", Asm.Pop "rbp", Asm.Ret]
-lowerIR2asm (MovReg to from) = [Asm.Mov to from] 
+lowerIR2asm (MovReg to from) = [Asm.Mov to from]
+lowerIR2asm (Lea x) = [Asm.Lea "eax" $ "[rbp-" ++ show x ++ "]"]
 lowerIR2asm (AsmCall ident) = [Asm.Call ident]
 lowerIR2asm (AsmInline asm) = [Asm.Inline asm]
 lowerIR2asm x = trace (show x) []

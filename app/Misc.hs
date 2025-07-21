@@ -15,3 +15,25 @@ instance Applicative Result where
 instance Monad Result where
   (Success a) >>= f = f a
   (Error e) >>= _ = Error e
+
+data Operand = StackPointer{offset :: Word, size :: Word} |
+               Reg{suffix :: String, size :: Word} |
+               Referenced Operand |
+               GeneralPurpose String |
+               Specific String |
+               Immediate String deriving Eq 
+
+instance Show Operand where
+  show StackPointer {offset=o, size=s} =
+    (if s == 8 then "QWORD" else "DWORD") ++ "[rbp-" ++ show o ++ "]"
+  show Reg {suffix=suf, size=s} =
+    (if s == 8 then "r" else "e") ++ suf
+  show (Immediate s) = s
+  show (Specific s) = s
+  show (GeneralPurpose s) = s
+  show (Referenced o) = "[" ++ show o ++ "]"
+
+systemV = [
+  Reg {suffix="di", size=4}, Reg {suffix="si", size=4},
+  Reg {suffix="dx", size=4}, Reg {suffix="cx", size=4},
+  GeneralPurpose "r8d", GeneralPurpose "r9d"]

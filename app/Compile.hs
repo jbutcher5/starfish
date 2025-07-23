@@ -15,8 +15,7 @@ import Control.Monad.State (State, get, put, evalState)
 
 type Environment = Map.HashMap String (Word, Word)
 
-data IR = LoadMemory Word Word | GetRef String | LoadRef Word Word | LoadVar String | Var String Word Word | Enter String Word | Leave | MovReg Operand Operand | AsmCall String | AsmInline String deriving (Show)
-
+data IR = LoadMemory Word Word | StringLiteral String | LoadRef String | GetVarRef String | LoadVarRef Word Word | LoadVar String | Var String Word Word | Enter String Word | Leave | MovReg Operand Operand | AsmCall String | AsmInline String deriving (Show)
 
 (><) :: Semigroup a => a -> a -> a
 a >< b = b <> a
@@ -64,28 +63,33 @@ ast2ir (Call fname args) = do
   Success $ x <> [AsmCall fname]
 ast2ir (Integral v) = Success [MovReg Reg {suffix="ax", size=8} . Immediate $ show v]
 ast2ir (VarRef ident) = Success [LoadVar ident]
-ast2ir (SpecialForm [Ident "ref", Ident ident]) = Success [GetRef ident]
+ast2ir (SpecialForm [Ident "ref", Ident ident]) = Success [GetVarRef ident]
 ast2ir (Deref ast) = do
   ir <- ast2ir ast
   Success $ ir <> [MovReg Reg {suffix="ax", size=8} $ Referenced Reg {suffix="ax", size=8}]
-ast2ir (Inline asm) = Success [AsmInline asm] 
+ast2ir (Inline asm) = Success [AsmInline asm]
+ast2ir (StrLiteral s) = Success [StringLiteral s]
 ast2ir x = Error $ "ast2ir error in token: " ++ show x
 
 -- Phase 2.5: Replace variables
+-- TODO: Break this out into it's own distict step
+-- Maybe have different IR.
+-- See if it can be moved between the token2ast and ast2ir step
 
-replaceIdents :: [IR] -> State (Environment, [IR]) [IR]
+replaceIdents :: [IR] -> State (Environment, [String], [IR]) ([String], [IR])
 replaceIdents [] = do
-  (_, ir) <- get
-  return ir
+  (_, stringBank, ir) <- get
+  return (stringBank, ir)
 replaceIdents (x:xs) = do
-  (env, ir) <- get
+  (env, stringBank, ir) <- get
   case x of
-    LoadVar ident -> put (env, ir ++ [LoadMemory size offset])
+    LoadVar ident -> put (env, stringBank, ir ++ [LoadMemory size offset])
       where (offset, size) = fromJust $ Map.lookup ident env
-    GetRef ident -> put (env, ir ++ [LoadRef offset size])
+    GetVarRef ident -> put (env, stringBank, ir ++ [LoadVarRef offset size])
       where (offset, size) = fromJust $ Map.lookup ident env
-    v@(Var ident size offset) -> put (Map.insert ident (offset, size) env, ir ++ [v])
-    Leave -> put (Map.empty, ir ++ [Leave])
-    x -> put (env, ir ++ [x])
+    v@(Var ident size offset) -> put (Map.insert ident (offset, size) env, stringBank, ir ++ [v])
+    StringLiteral s -> put (env, s:stringBank, ir ++ [LoadRef $ "LC" ++ show (length stringBank)])
+    Leave -> put (Map.empty, stringBank, ir ++ [Leave])
+    x -> put (env, stringBank, ir ++ [x])
   replaceIdents xs
 

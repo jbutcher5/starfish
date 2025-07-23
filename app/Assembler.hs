@@ -33,7 +33,14 @@ instance Show Asm where
   show (Comment s) = "\n\t; " ++ s
 
 generateAsm :: [Asm] -> String
-generateAsm asm = "global _start\nsection .text" ++ concatMap show asm 
+generateAsm asm = "global main\nsection .gnu.note.GNU-stack\nsection .text" ++ concatMap show asm 
+
+generateData :: [String] -> String
+generateData stringBank =
+  "section .data\n" ++ (concatMap (\(n, s) -> dataEntry ((length stringBank - n), s)) $ zip [1..] stringBank)  
+  where
+    dataEntry :: (Int, String) -> String
+    dataEntry (n, s) = "LC" ++ show n ++ ": db \"" ++ s ++ "\", 0\n" 
 
 irComment :: IR -> Asm
 irComment = Comment . show 
@@ -44,6 +51,7 @@ ir2asm lm@(LoadMemory size offset) = [irComment lm, Mov Reg{suffix="ax", size=si
 ir2asm e@(Enter label reserved) = [irComment e, Label label, Push $ Specific "rbp", Mov (Specific "rbp") (Specific "rsp"), Sub (Specific "rsp") . Specific $ show reserved]
 ir2asm Leave = [irComment Leave, Mov (Specific "rsp") (Specific "rbp"), Pop (Specific "rbp"), Ret]
 ir2asm m@(MovReg to from) = [irComment m, Mov to from]
-ir2asm lr@(LoadRef offset size) = [irComment lr, Lea Reg{suffix="ax", size=8} StackPointer{offset=offset, size=size}]
+ir2asm lr@(LoadVarRef offset size) = [irComment lr, Lea Reg{suffix="ax", size=8} StackPointer{offset=offset, size=size}]
 ir2asm c@(AsmCall ident) = [irComment c, Call ident]
 ir2asm (AsmInline asm) = [Comment "Inlined Assembly", Inline asm]
+ir2asm (LoadRef x) = [Mov Reg{suffix="ax", size=8} $ Specific x]

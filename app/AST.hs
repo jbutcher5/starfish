@@ -15,7 +15,8 @@ data AST = Extern [String] |
           Inline String |
           SpecialForm [Token] |
           Deref AST |
-          Integral Int
+          Integral Int |
+          StrLiteral String
           deriving (Show)
 
 stripStrings :: [Token] -> Result [String]
@@ -46,3 +47,4 @@ token2ast (Expr (Ident "extern":externs)) = Extern <$> stripStrings externs
 token2ast (Num x) = Success . Integral $ float2Int x
 token2ast (Ident x) = Success $ VarRef x
 token2ast (Expr ((Ident fname):xs)) = Call fname <$> mapM token2ast xs
+token2ast (Str s) = Success $ StrLiteral s

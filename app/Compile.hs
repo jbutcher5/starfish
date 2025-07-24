@@ -64,9 +64,9 @@ ast2ir (Call fname args) = do
 ast2ir (Integral v) = Success [MovReg Reg {suffix="ax", size=8} . Immediate $ show v]
 ast2ir (VarRef ident) = Success [LoadVar ident]
 ast2ir (SpecialForm [Ident "ref", Ident ident]) = Success [GetVarRef ident]
-ast2ir (Deref ast) = do
+ast2ir (Deref ast size) = do
   ir <- ast2ir ast
-  Success $ ir <> [MovReg Reg {suffix="ax", size=8} $ Referenced Reg {suffix="ax", size=8}]
+  Success $ ir <> [MovReg Reg {suffix="ax", size=size} $ Referenced Reg {suffix="ax", size=8}]
 ast2ir (Inline asm) = Success [AsmInline asm]
 ast2ir (StrLiteral s) = Success [StringLiteral s]
 ast2ir x = Error $ "ast2ir error in token: " ++ show x

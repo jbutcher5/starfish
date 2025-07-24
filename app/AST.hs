@@ -14,7 +14,7 @@ data AST = Extern [String] |
           VarRef String |
           Inline String |
           SpecialForm [Token] |
-          Deref AST |
+          Deref AST Word |
           Integral Int |
           StrLiteral String
           deriving (Show)
@@ -26,6 +26,7 @@ stripStrings xs = mapM (\case
                           "Could not convert " ++ show x ++ " in " ++ show xs ++ " to a String") xs
 
 typeSize :: String -> Result Word
+typeSize "Char" = Success 1
 typeSize "Int" = Success 4
 typeSize "Ptr" = Success 8
 typeSize t = Error $ t ++ " is not a valid type"
@@ -42,7 +43,7 @@ token2ast (Expr ((Ident "defun"):(Ident name):(Expr args):xs)) = do
   FrameFunc name argReg <$> mapM token2ast xs 
 token2ast (Expr [Ident "asm", Str asm]) = Success $ Inline asm 
 token2ast (Expr form@[Ident "ref", expr]) = Success $ SpecialForm form
-token2ast (Expr [Ident "deref", expr]) = Deref <$> token2ast expr 
+token2ast (Expr [Ident "deref", Ident sizeStr, expr]) = Deref <$> token2ast expr <*> typeSize sizeStr
 token2ast (Expr (Ident "extern":externs)) = Extern <$> stripStrings externs
 token2ast (Num x) = Success . Integral $ float2Int x
 token2ast (Ident x) = Success $ VarRef x

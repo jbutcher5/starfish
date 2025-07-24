@@ -25,9 +25,12 @@ data Operand = StackPointer{offset :: Word, size :: Word} |
 
 instance Show Operand where
   show StackPointer {offset=o, size=s} =
-    (if s == 8 then "QWORD" else "DWORD") ++ "[rbp-" ++ show o ++ "]"
-  show Reg {suffix=suf, size=s} =
-    (if s == 8 then "r" else "e") ++ suf
+    (case s of
+       8 -> "QWORD"
+       _ -> "DWORD") ++ " [rbp-" ++ show o ++ "]"
+  show Reg {suffix=suf, size=s} = case s of
+    8 -> 'r' : suf
+    _ -> 'e' : suf
   show (Immediate s) = s
   show (Specific s) = s
   show (GeneralPurpose s) = s

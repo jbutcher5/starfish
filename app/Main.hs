@@ -3,7 +3,7 @@ module Main where
 import Parse (Token (..), value, values)
 import AST (token2ast)
 import Compile (ast2ir, replaceIdents, IR)
-import Assembler (ir2asm, generateAsm, Asm)
+import Assembler (ir2asm, generateAsm, generateData, Asm)
 import Misc (Result (..))
 
 import qualified Data.HashMap.Strict as Map (empty)
@@ -13,17 +13,17 @@ import Text.Parsec (parse)
 import System.IO
 import System.Environment (getArgs)
 
-execStaticAnalysis :: [Token] -> Result [IR]
+execStaticAnalysis :: [Token] -> Result ([String], [IR])
 execStaticAnalysis tokens = do
   ast <- mapM token2ast tokens
   ir <- concat <$> mapM ast2ir ast
-  Success $ evalState (replaceIdents ir) (Map.empty, [])
+  Success $ evalState (replaceIdents ir) (Map.empty, [], [])
 
 compile :: [Token] -> Result String
 compile tokens = do
-  ir <- execStaticAnalysis tokens
+  (stringBank, ir) <- execStaticAnalysis tokens
   let asm = concatMap ir2asm ir :: [Asm]
-  Success $ generateAsm asm
+  Success $ generateAsm asm ++ "\n\n" ++ generateData stringBank
 
 compileLines :: String -> String -> IO ()
 compileLines content output = do

@@ -12,6 +12,10 @@ data Asm = Mov Operand Operand |
 -- Super big order of complexity find a nicer solution
 movFolding :: [Asm] -> [Asm] -> [Asm]
 
+movFolding (c@(Comment _):xs) acc =
+  movFolding xs $ acc ++ [c]
+movFolding (x:c@(Comment _):xs) acc =
+  movFolding (x:xs) $ acc ++ [c]
 movFolding (m1@(Mov y1 x):m2@(Mov z y2):xs) acc =
   if y1 == y2 then
    movFolding (Mov z x:xs) acc
@@ -33,7 +37,8 @@ instance Show Asm where
   show (Comment s) = "\n\t; " ++ s
 
 generateAsm :: [Asm] -> String
-generateAsm asm = "global main\nsection .gnu.note.GNU-stack\nsection .text" ++ concatMap show asm 
+generateAsm asm = "global main\nsection .note.GNU-stack\nsection .text" ++ concatMap show optimised
+  where optimised = movFolding asm []
 
 generateData :: [String] -> String
 generateData stringBank =

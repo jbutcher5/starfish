@@ -26,18 +26,21 @@ instance Show Token where
   show (Boolean True) = "#t"
   show (Boolean False) = "#f"
   show (Macro formals body) = "(defmacro " ++ (show . Expr $ map Ident formals) ++ " " ++ showBody body ++ ")"
-    
-quote :: Parsec String st Token
-quote = (*>) (char '\'') $ (\x -> Expr [Ident "quote", x]) <$> value
 
-value :: Parsec String st Token 
-value = skipMany (oneOf " \n") *> choice [quote, number, str, boolean, expr, ident, nil] <* skipMany (oneOf " \n")
+quote :: Parsec String st Token 
+quote = (*>) (char '\'') $ (\x -> Expr [Ident "quote", x]) . snd <$> value
+
+value :: Parsec String st (Int, Token) 
+value = do
+  token <- skipMany (oneOf " \n") *> choice [quote, number, str, boolean, expr, ident, nil] <* skipMany (oneOf " \n")
+  line <- sourceLine <$> getPosition 
+  return (line, token)
 
 ident :: Parsec String st Token 
 ident = Ident <$> many1 (noneOf "()[]{} \n")
 
 expr :: Parsec String st Token
-expr = char '(' *> (Expr <$> values) <* char ')'
+expr = char '(' *> (Expr . map snd <$> values) <* char ')'
 
 decimal :: Parsec String st String 
 decimal = (:) <$> char '.' <*> many1 digit
@@ -68,5 +71,5 @@ boolean = char '#' >> choice [true, false]
 nil :: Parsec String st Token
 nil = string "nil" >> pure Nil
 
-values :: Parsec String st [Token]
+values :: Parsec String st [(Int, Token)]
 values = many value

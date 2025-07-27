@@ -3,7 +3,7 @@
 module Compile where
 
 import Parse (Token (..))
-import AST (AST (..), token2ast)
+import AST (AST (..), TypeSignature, token2ast, Type (..))
 import Misc (Result (..), Operand (..), systemV)
 
 import Data.Bits ((.&.))
@@ -13,28 +13,40 @@ import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
 
 import Control.Monad.State (State, get, put, evalState)
 
+type FunctionMap = Map.HashMap String TypeSignature 
 type Environment = Map.HashMap String (Word, Word)
 
-data IR = LoadMemory Word Word | StringLiteral String | LoadRef String | GetVarRef String | LoadVarRef Word Word | LoadVar String | Var String Word Word | Enter String Word | Leave | MovReg Operand Operand | AsmCall String | AsmInline String deriving (Show)
+data IR = LoadMemory Word Word | StringLiteral String |
+          LoadRef String | GetVarRef String |
+          LoadVarRef Word Word | LoadVar String |
+          Var String Word Word | Enter String Word |
+          Leave | MovReg Operand Operand |
+          AsmCall String | AsmInline String deriving (Show)
 
 (><) :: Semigroup a => a -> a -> a
 a >< b = b <> a
 
+typeSize :: Type -> Word
+typeSize C = 1
+typeSize I = 4
+typeSize Ptr = 8
+
 -- Phase 2: AST to IR
 
-type ParamReg = (Operand, String)     
+type ParamReg = (Operand, String, Type)     
 ast2ir :: AST -> Result [IR]
-ast2ir (FrameFunc fname args body) = do
+ast2ir (FrameFunc fname _ args body) = do
   bodyir <- concat <$> mapM ast2ir body
   let (reserved, bodyir') = evalState (calcReserved (args, bodyir)) (0, [])
 
       -- Calculate how much stack space is needed for each function
       -- Also, update variable offsets
       calcReserved :: ([ParamReg], [IR]) -> State (Word, [IR]) (Word, [IR])
-      calcReserved ((reg, param):xs, ir) = do
+      calcReserved ((reg, param, t):xs, ir) = do
         (res, ir') <- get
-        let offset = res + 4 -- TODO: Remove and size parameters sometimes
-        put (offset, ir' ++ [MovReg Reg{suffix="ax", size=4} reg, Var param 4 offset])
+        let size = typeSize t
+            offset = res + size
+        put (offset, ir' ++ [MovReg Reg{suffix="ax", size=size} reg, Var param size offset])
         calcReserved (xs, ir)
       calcReserved ([], x:xs) = do
         (res, ir') <- get
@@ -48,25 +60,27 @@ ast2ir (FrameFunc fname args body) = do
       next16 b = (0xFFFFFFFFFFFFFFF0 .&. b) + 16
 
   Success $ [Enter fname $ next16 reserved] <> bodyir' <> [Leave]
-        
-ast2ir (Variable name size reg ast) = (><) [Var name size reg] <$> ast2ir ast
-ast2ir (Call fname args) = do
+
+ast2ir (CCall fname _) = Success $ [AsmInline $ "extern " ++ fname] 
+ast2ir (Variable name t reg ast) = (><) [Var name (typeSize t) reg] <$> ast2ir ast
+ast2ir (Call fname args maybet) = do
+  t <- maybet
   let  buildParams :: [AST] -> Result [IR]
        buildParams = setupParams . zip systemV
        setupParams :: [(Operand, AST)] -> Result [IR] 
        setupParams = foldr (\(reg, ir) acc -> do
                                a <- acc
                                x <- ast2ir ir
-                               Success $ a <> x <> [MovReg reg Reg{suffix="ax", size=4}]) (Success [])
+                               Success $ a <> x <> [MovReg reg Reg{suffix="ax", size=typeSize t}]) (Success [])
 
   x <- buildParams args
   Success $ x <> [AsmCall fname]
 ast2ir (Integral v) = Success [MovReg Reg {suffix="ax", size=8} . Immediate $ show v]
 ast2ir (VarRef ident) = Success [LoadVar ident]
 ast2ir (SpecialForm [Ident "ref", Ident ident]) = Success [GetVarRef ident]
-ast2ir (Deref ast size) = do
+ast2ir (Deref ast t) = do
   ir <- ast2ir ast
-  Success $ ir <> [MovReg Reg {suffix="ax", size=size} $ Referenced Reg {suffix="ax", size=8}]
+  Success $ ir <> [MovReg Reg {suffix="ax", size=typeSize t} $ Referenced Reg {suffix="ax", size=8}]
 ast2ir (Inline asm) = Success [AsmInline asm]
 ast2ir (StrLiteral s) = Success [StringLiteral s]
 ast2ir x = Error $ "ast2ir error in token: " ++ show x
@@ -92,4 +106,21 @@ replaceIdents (x:xs) = do
     Leave -> put (Map.empty, stringBank, ir ++ [Leave])
     x -> put (env, stringBank, ir ++ [x])
   replaceIdents xs
+
+-- TODO: Implement Type Checking but AST nor IR seem like the right place
+
+-- typeCheck :: [IR] -> State (FunctionMap, Result [IR]) (Result [IR]) 
+-- typeCheck [] = do
+--   (_, ir) <- get
+--   return ir
+-- typeCheck (x:xs) = do
+--   (env, ir) <- get
+--   case trace (show x) x of
+--     c@(CCall fname sig) -> put (Map.insert fname sig env, (:) c <$> ast)
+--     f@(FrameFunc fname ret args _) -> put (Map.insert fname (ret, []) env, (><) [f] <$> ast)
+--     Call fname args d -> put (env, (><) [Call fname args k] <$> ast)
+--       where maybesig = Success . fst . fromJust $ Map.lookup fname env :: Result Type
+--             k = trace (show maybesig) maybesig
+--     x -> put (env, (><) [x] <$> ast)
+--   typeCheck xs
 

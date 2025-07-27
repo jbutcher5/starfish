@@ -6,15 +6,24 @@ import Parse (Token (..))
 import Misc (Result (..), Operand (..), systemV)
 import GHC.Float (float2Int)
 
+type TypeSignature = (Type, [Type])
+
+data Type = Ptr | I | C
+
+instance Show Type where
+  show Ptr = "Ptr"
+  show I = "Int"
+  show C = "Char"
+
 data AST = Extern [String] |
-          FrameFunc String [(Operand, String)] [AST] |
-          LeafFunc String [(Operand, String)] [AST] |
-          Variable String Word Word AST |
-          Call String [AST] |
+          FrameFunc String Type [(Operand, String, Type)] [AST] |
+          CCall String TypeSignature |
+          Variable String Type Word AST |
+          Call String [AST] (Result Type) |
           VarRef String |
           Inline String |
           SpecialForm [Token] |
-          Deref AST Word |
+          Deref AST Type |
           Integral Int |
           StrLiteral String
           deriving (Show)
@@ -25,36 +34,49 @@ stripStrings xs = mapM (\case
                         x -> Error $
                           "Could not convert " ++ show x ++ " in " ++ show xs ++ " to a String") xs
 
-typeSize :: String -> Result Word
-typeSize "Char" = Success 1
-typeSize "Int" = Success 4
-typeSize "Ptr" = Success 8
-typeSize t = Error $ t ++ " is not a valid type"
+toType :: String -> Result Type
+toType "Char" = Success C 
+toType "Int" = Success I
+toType "Ptr" = Success Ptr
+toType t = Error $ t ++ " is not a valid type"
 
 token2ast :: Token -> Result AST
 token2ast (Expr [Ident "define", Ident t, Ident label, token]) = do
-  size <- typeSize t
+  size <- toType t
   Variable label size 0 <$> token2ast token
 token2ast (Expr (Ident "define":xs)) = Error $ "define must be within the form (define Type name expr) not " ++ show xs
 
-token2ast (Expr ((Ident "defun"):(Ident name):(Expr args):xs)) = do
-  strings <- stripStrings args
-  let argReg = zip systemV strings
-  FrameFunc name argReg <$> mapM token2ast xs
-token2ast (Expr (Ident "defun":xs)) = Error $ "defun must be within the form (defun name (args) *body) not " ++ show xs
+token2ast (Expr ((Ident "defun"):(Ident name):(Ident ret):(Expr args):xs)) = do
+  returnType <- toType ret
+  shit <- mapM (\case
+                      Expr [Ident t, Ident x] -> do
+                        t' <- toType t
+                        Success (t', x)
+                      e -> Error $ show e ++ " does not match pattern (Type, paramName)") args
+  let (paramTypes, argNames) = unzip shit :: ([Type], [String])
+      argReg = zip3 systemV argNames paramTypes
+  FrameFunc name returnType argReg <$> mapM token2ast xs
+token2ast (Expr (Ident "defun":xs)) = Error $ "defun must be within the form (defun name Type (args) *body) not " ++ show xs
   
 token2ast (Expr [Ident "asm", Str asm]) = Success $ Inline asm 
 token2ast (Expr form@[Ident "ref", expr]) = Success $ SpecialForm form
 
-token2ast (Expr [Ident "deref", Ident sizeStr, expr]) = Deref <$> token2ast expr <*> typeSize sizeStr
+token2ast (Expr [Ident "deref", Ident t, expr]) = Deref <$> token2ast expr <*> toType t
 token2ast (Expr (Ident "deref":xs)) = Error $ "deref must be within the form (deref Type Ptr) not " ++ show xs
 
+token2ast (Expr [Ident "ccall", Ident fname, Ident return, Expr parameters]) = do
+  returnType <- toType return
+  paramTypes <- mapM toType =<< stripStrings parameters
+  Success $ CCall fname (returnType, paramTypes)  
+  
 token2ast (Expr (Ident "extern":externs)) = Extern <$> stripStrings externs
 token2ast (Expr [Ident "extern"]) = Error "extern must not be empty"
 
 token2ast (Num x) = Success . Integral $ float2Int x
 token2ast (Ident x) = Success $ VarRef x
-token2ast (Expr ((Ident fname):xs)) = Call fname <$> mapM token2ast xs
+token2ast (Expr ((Ident fname):(Ident t):xs)) = do
+  ast <- mapM token2ast xs
+  Success . Call fname ast $ toType t 
 token2ast (Str s) = Success $ StrLiteral s
 
 tokn2ast expr = Error $ "Unkown expr " ++ show expr

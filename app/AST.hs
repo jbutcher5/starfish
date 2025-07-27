@@ -3,8 +3,13 @@
 module AST where
 
 import Parse (Token (..))
-import Misc (Result (..), Operand (..), systemV)
+import Misc (Result (..), Operand (..), systemV, (><))
 import GHC.Float (float2Int)
+import Data.Maybe (fromJust)
+
+import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
+import Control.Monad.State (State, get, put, evalState)
+type FunctionMap = Map.HashMap String TypeSignature 
 
 type TypeSignature = (Type, [Type])
 
@@ -74,9 +79,9 @@ token2ast (Expr [Ident "extern"]) = Error "extern must not be empty"
 
 token2ast (Num x) = Success . Integral $ float2Int x
 token2ast (Ident x) = Success $ VarRef x
-token2ast (Expr ((Ident fname):(Ident t):xs)) = do
+token2ast (Expr ((Ident fname):xs)) = do
   ast <- mapM token2ast xs
-  Success . Call fname ast $ toType t 
+  Success . Call fname ast $ Error $ "Can't find a definition for " ++ fname 
 token2ast (Str s) = Success $ StrLiteral s
 
 tokn2ast expr = Error $ "Unkown expr " ++ show expr
@@ -86,3 +91,24 @@ line2ast (line, token) =
   case token2ast token of
     s@(Success _) -> s
     Error s -> Error $ "Error on line " ++ show line ++ "\n" ++ s
+
+-- TODO: Implement Type Checking but AST nor IR seem like the right place
+
+typeCalls :: [AST] -> State (FunctionMap, Result [AST]) (Result [AST]) 
+typeCalls [] = do
+  (_, ast) <- get
+  return ast
+typeCalls (x:xs) = do
+  (env, ast) <- get
+  case x of
+    c@(CCall fname sig) -> put (Map.insert fname sig env, (:) c <$> ast)
+    f@(FrameFunc fname ret args body) -> do
+      let s = typeCalls body :: State (FunctionMap, Result [AST]) (Result [AST])
+          l = (\x -> [FrameFunc fname ret args x]) <$> evalState s (env, Success []) :: Result [AST]
+      case l of
+        Success newBody -> put (Map.insert fname (ret, []) env, (><) newBody <$> ast)
+        e -> put (env, e)
+    Call fname args d -> put (env, (><) [Call fname args maybesig] <$> ast)
+      where maybesig = Success . fst . fromJust $ Map.lookup fname env :: Result Type
+    x -> put (env, (><) [x] <$> ast)
+  typeCalls xs

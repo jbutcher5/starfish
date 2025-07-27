@@ -4,16 +4,13 @@ module Compile where
 
 import Parse (Token (..))
 import AST (AST (..), TypeSignature, token2ast, Type (..))
-import Misc (Result (..), Operand (..), systemV)
+import Misc (Result (..), Operand (..), systemV, (><))
 
 import Data.Bits ((.&.))
 import Data.Maybe (fromJust)
 
 import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
-
 import Control.Monad.State (State, get, put, evalState)
-
-type FunctionMap = Map.HashMap String TypeSignature 
 type Environment = Map.HashMap String (Word, Word)
 
 data IR = LoadMemory Word Word | StringLiteral String |
@@ -22,9 +19,6 @@ data IR = LoadMemory Word Word | StringLiteral String |
           Var String Word Word | Enter String Word |
           Leave | MovReg Operand Operand |
           AsmCall String | AsmInline String deriving (Show)
-
-(><) :: Semigroup a => a -> a -> a
-a >< b = b <> a
 
 typeSize :: Type -> Word
 typeSize C = 1
@@ -106,21 +100,3 @@ replaceIdents (x:xs) = do
     Leave -> put (Map.empty, stringBank, ir ++ [Leave])
     x -> put (env, stringBank, ir ++ [x])
   replaceIdents xs
-
--- TODO: Implement Type Checking but AST nor IR seem like the right place
-
--- typeCheck :: [IR] -> State (FunctionMap, Result [IR]) (Result [IR]) 
--- typeCheck [] = do
---   (_, ir) <- get
---   return ir
--- typeCheck (x:xs) = do
---   (env, ir) <- get
---   case trace (show x) x of
---     c@(CCall fname sig) -> put (Map.insert fname sig env, (:) c <$> ast)
---     f@(FrameFunc fname ret args _) -> put (Map.insert fname (ret, []) env, (><) [f] <$> ast)
---     Call fname args d -> put (env, (><) [Call fname args k] <$> ast)
---       where maybesig = Success . fst . fromJust $ Map.lookup fname env :: Result Type
---             k = trace (show maybesig) maybesig
---     x -> put (env, (><) [x] <$> ast)
---   typeCheck xs
-

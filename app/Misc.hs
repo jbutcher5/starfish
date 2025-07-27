@@ -40,3 +40,6 @@ systemV = [
   Reg {suffix="di", size=4}, Reg {suffix="si", size=4},
   Reg {suffix="dx", size=4}, Reg {suffix="cx", size=4},
   GeneralPurpose "r8d", GeneralPurpose "r9d"]
+
+(><) :: Semigroup a => a -> a -> a
+a >< b = b <> a

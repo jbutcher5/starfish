@@ -1,7 +1,7 @@
-(asm "extern putchar")
+(ccall putchar Char (Char))
 
-(defun main ()
+(defun main Int ()
   (define Ptr var "Hello, World!")
-  (define Int first (deref Char var))
+  (define Char first (deref Char var))
   (putchar first)
   0)

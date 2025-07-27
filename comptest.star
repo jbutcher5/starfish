@@ -1,7 +1,7 @@
 (ccall putchar Char (Char))
 
-(defun main Int ()
-  (define Ptr var "Hello, World!")
-  (define Char first (deref Char var))
+(defun main ()
+  (define var "Hello, World!")
+  (define first (deref Char var))
   (putchar first)
   0)

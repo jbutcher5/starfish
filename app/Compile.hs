@@ -23,7 +23,7 @@ data IR = LoadMemory Word Word | StringLiteral String |
 typeSize :: Type -> Word
 typeSize C = 1
 typeSize I = 4
-typeSize Ptr = 8
+typeSize (Ptr _) = 8
 
 -- Phase 2: AST to IR
 

@@ -21,15 +21,15 @@ data IR = LoadMemory Word Word | StringLiteral String |
           AsmCall String | AsmInline String deriving (Show)
 
 typeSize :: Type -> Word
-typeSize C = 1
-typeSize I = 4
-typeSize (Ptr _) = 8
+typeSize TChar = 1
+typeSize TIntegral = 4
+typeSize (TPtr _) = 8
 
 -- Phase 2: AST to IR
 
 type ParamReg = (Operand, String, Type)     
 ast2ir :: AST -> Result [IR]
-ast2ir (FrameFunc fname _ args body) = do
+ast2ir (ASTFunc fname _ args body) = do
   bodyir <- concat <$> mapM ast2ir body
   let (reserved, bodyir') = evalState (calcReserved (args, bodyir)) (0, [])
 
@@ -55,11 +55,11 @@ ast2ir (FrameFunc fname _ args body) = do
 
   Success $ [Enter fname $ next16 reserved] <> bodyir' <> [Leave]
 
-ast2ir (CCall fname _) = Success [AsmInline $ "extern " ++ fname] 
-ast2ir (Variable name t reg ast) = do
-  (><) [Var name (typeSize t) reg] <$> ast2ir ast
-ast2ir (Call fname args t') = do
-  t <- t'
+ast2ir (ASTCCall fname _) = Success [AsmInline $ "extern " ++ fname] 
+ast2ir (ASTVar name ast t) = do
+  (><) [Var name (typeSize t) 0] <$> ast2ir ast
+ast2ir (ASTCall fname args t) = do
+  t <- t
   let  buildParams :: [AST] -> Result [IR]
        buildParams = setupParams . zip systemV
        setupParams :: [(Operand, AST)] -> Result [IR] 
@@ -70,14 +70,14 @@ ast2ir (Call fname args t') = do
 
   x <- buildParams args
   Success $ x <> [AsmCall fname]
-ast2ir (Integral v) = Success [MovReg Reg {suffix="ax", size=8} . Immediate $ show v]
-ast2ir (VarRef ident) = Success [LoadVar ident]
-ast2ir (SpecialForm [Ident "ref", Ident ident]) = Success [GetVarRef ident]
-ast2ir (Deref ast t) = do
+ast2ir (ASTIntegral v) = Success [MovReg Reg {suffix="ax", size=8} . Immediate $ show v]
+ast2ir (ASTVarRef ident) = Success [LoadVar ident]
+ast2ir (ASTSpecialForm [Ident "ref", Ident ident]) = Success [GetVarRef ident]
+ast2ir (ASTDeref ast t) = do
   ir <- ast2ir ast
   Success $ ir <> [MovReg Reg {suffix="ax", size=typeSize t} $ Referenced Reg {suffix="ax", size=8}]
-ast2ir (Inline asm) = Success [AsmInline asm]
-ast2ir (StrLiteral s) = Success [StringLiteral s]
+ast2ir (ASTInline asm) = Success [AsmInline asm]
+ast2ir (ASTStr s) = Success [StringLiteral s]
 ast2ir x = Error $ "ast2ir error in token: " ++ show x
 
 -- Phase 2.5: Replace variables

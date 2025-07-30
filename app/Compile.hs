@@ -55,10 +55,11 @@ ast2ir (FrameFunc fname _ args body) = do
 
   Success $ [Enter fname $ next16 reserved] <> bodyir' <> [Leave]
 
-ast2ir (CCall fname _) = Success $ [AsmInline $ "extern " ++ fname] 
-ast2ir (Variable name t reg ast) = (><) [Var name (typeSize t) reg] <$> ast2ir ast
-ast2ir (Call fname args maybet) = do
-  t <- maybet
+ast2ir (CCall fname _) = Success [AsmInline $ "extern " ++ fname] 
+ast2ir (Variable name t reg ast) = do
+  (><) [Var name (typeSize t) reg] <$> ast2ir ast
+ast2ir (Call fname args t') = do
+  t <- t'
   let  buildParams :: [AST] -> Result [IR]
        buildParams = setupParams . zip systemV
        setupParams :: [(Operand, AST)] -> Result [IR] 

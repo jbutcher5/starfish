@@ -2,6 +2,9 @@ module Misc where
 
 data Result a = Success a | Error String deriving Show
 
+isError :: Result a -> Bool
+isError (Error _) = True
+
 instance Functor Result where
   fmap f (Success a) = Success (f a)
   fmap _ (Error e) = Error e

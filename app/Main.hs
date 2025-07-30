@@ -15,9 +15,8 @@ import System.Environment (getArgs)
 
 execStaticAnalysis :: [(Int, Token)] -> Result ([String], [IR])
 execStaticAnalysis tokens = do
-  ast <- mapM line2ast tokens
-  typecalls <- evalState (typeCalls ast) (Map.empty, Success [])
-  ir <- concat <$> mapM ast2ir typecalls
+  ast <- mapM line2ast tokens >>= typeCalls
+  ir <- concat <$> mapM ast2ir ast 
   Success $ evalState (replaceIdents ir) (Map.empty, [], [])
 
 compile :: [(Int, Token)] -> Result String

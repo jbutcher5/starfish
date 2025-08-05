@@ -7,8 +7,6 @@ import Misc (Result (..), Operand (..), systemV, (><))
 import GHC.Float (float2Int)
 import Data.Maybe (fromJust)
 
-import Debug.Trace
-
 import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
 import Control.Monad.State (State, get, put, evalState)
 type FunctionMap = Map.HashMap String Type 
@@ -32,7 +30,8 @@ data AST = ASTExtern [String] |
           ASTSpecialForm [Token] |
           ASTDeref AST Type |
           ASTIntegral Int |
-          ASTStr String
+          ASTStr String |
+          ASTIf (Maybe Int) AST AST AST
           deriving (Show)
 
 stripStrings :: [Token] -> Result [String]
@@ -102,6 +101,9 @@ token2ast (Expr [Ident "ccall", Ident fname, Ident return, Expr parameters]) = d
 token2ast (Expr (Ident "extern":externs)) = ASTExtern <$> stripStrings externs
 token2ast (Expr [Ident "extern"]) = Error "extern must not be empty"
 
+token2ast (Expr [Ident "if", cond, t, f]) =
+  ASTIf Nothing <$> token2ast cond <*> token2ast t <*> token2ast f 
+
 token2ast (Num x) = Success . ASTIntegral $ float2Int x
 token2ast (Ident x) = Success $ ASTVarRef x
 token2ast (Expr ((Ident fname):xs)) = do
@@ -112,8 +114,7 @@ token2ast (Expr ((Ident fname):xs)) = do
     defaultError = Error $ "Can't find a definition for " ++ fname
 
 token2ast (Str s) = Success $ ASTStr s
-
-tokn2ast expr = Error $ "Unkown expr " ++ show expr
+token2ast expr = Error $ "Unkown expr " ++ show expr
 
 line2ast :: (Int, Token) -> Result AST
 line2ast (line, token) =
@@ -128,25 +129,40 @@ typePropagation (ASTCall _ _ t) = t
 typePropagation (ASTDeref _ t) = Success t
 typePropagation x = Error $ "Cannot guess type from " ++ show x
 
+type ASTState = (Int, FunctionMap, Result [AST])
+
+thd :: (a, b, c) -> c
+thd (_, _, c) = c
+
 typeCalls :: [AST] -> Result [AST]
-typeCalls ast = typeCalls' ast Map.empty 
+typeCalls ast = thd $ typeCalls' ast Map.empty 0 
 
-typeCalls' :: [AST] -> FunctionMap -> Result [AST]
-typeCalls' ast env = evalState (typeCallsS ast) (env, Success []) 
+typeCalls' :: [AST] -> FunctionMap -> Int -> ASTState 
+typeCalls' ast env id = evalState (typeCallsS ast) (id, env, Success []) 
 
-typeCallsS :: [AST] -> State (FunctionMap, Result [AST]) (Result [AST]) 
-typeCallsS [] = do
-  (_, ast) <- get
-  return ast
-typeCallsS (x:xs) = do
-  (env, ast) <- get
-  case x of
-    c@(ASTCCall fname (ret, _)) -> put (Map.insert fname ret env, (:) c <$> ast)
-    f@(ASTFunc fname ret args body) ->
-      case typeCalls' body env of
-        Success body -> put (Map.insert fname ret env, (><) [ASTFunc fname ret args body] <$> ast)
-        e -> put (env, e)
-    ASTCall fname args d -> put (env, (><) [ASTCall fname args maybesig] <$> ast)
+concatAST :: Monad m => m [AST] -> AST -> m [AST]
+concatAST ast node = (><) [node] <$> ast
+
+evalIfBody :: (Int, FunctionMap) -> AST -> AST -> AST -> (Int, FunctionMap, Result AST)
+evalIfBody (id, table) cond t f =
+
+updateAST :: (Int, FunctionMap) -> AST -> (Int, FunctionMap, Result AST)
+updateAST (id, env) = \case
+  c@(ASTCCall fname (ret, _)) -> (id, Map.insert fname ret env, c)
+  x@(ASTIf Nothing cond t f) -> undefined
+  f@(ASTFunc fname ret args body) ->
+    case typeCalls' body env id of
+      (id, env, Success body) ->
+        (id, Map.insert fname ret env, ASTFunc fname ret args body)
+      e -> (id, env, e)
+  (ASTCall fname args d) -> (id, env, ASTCall fname args maybesig)
       where maybesig = Success . fromJust $ Map.lookup fname env :: Result Type
-    x -> put (env, (><) [x] <$> ast)
+  x -> (id, env, x)
+
+typeCallsS :: [AST] -> State ASTState ASTState 
+typeCallsS [] = do get 
+typeCallsS (x:xs) = do
+  (id, table, ast) <- get
+  let (id, table, node) = updateAST (id, table) x
+  put (id, table, concatAST ast node)
   typeCallsS xs

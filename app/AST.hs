@@ -140,29 +140,41 @@ typeCalls ast = thd $ typeCalls' ast Map.empty 0
 typeCalls' :: [AST] -> FunctionMap -> Int -> ASTState 
 typeCalls' ast env id = evalState (typeCallsS ast) (id, env, Success []) 
 
-concatAST :: Monad m => m [AST] -> AST -> m [AST]
-concatAST ast node = (><) [node] <$> ast
+concatAST :: Monad m => m [AST] -> m AST -> m [AST]
+concatAST ast node = do
+  node' <- node
+  (><) [node'] <$> ast
 
 evalIfBody :: (Int, FunctionMap) -> AST -> AST -> AST -> (Int, FunctionMap, Result AST)
-evalIfBody (id, table) cond t f =
+evalIfBody s cond t f =
+   (2 + id'', table'', case (cond', t', f') of
+       (Success cond'', Success t'', Success f'') ->
+         Success $ ASTIf (Just $ 1 + id'') cond'' t'' f''
+       e -> Error "Test")
+   
+  where
+    (id, table, cond') = updateAST s cond
+    (id', table', t') = updateAST (id, table) t
+    (id'', table'', f') = updateAST (id', table') f
+ 
 
 updateAST :: (Int, FunctionMap) -> AST -> (Int, FunctionMap, Result AST)
-updateAST (id, env) = \case
-  c@(ASTCCall fname (ret, _)) -> (id, Map.insert fname ret env, c)
-  x@(ASTIf Nothing cond t f) -> undefined
+updateAST s@(id, env) = \case
+  c@(ASTCCall fname (ret, _)) -> (id, Map.insert fname ret env, Success c)
+  (ASTIf Nothing cond t f) -> evalIfBody s cond t f 
   f@(ASTFunc fname ret args body) ->
     case typeCalls' body env id of
       (id, env, Success body) ->
-        (id, Map.insert fname ret env, ASTFunc fname ret args body)
-      e -> (id, env, e)
-  (ASTCall fname args d) -> (id, env, ASTCall fname args maybesig)
+        (id, Map.insert fname ret env, Success $ ASTFunc fname ret args body)
+      (id, env, Error e) -> (id, env, Error e)
+  (ASTCall fname args d) -> (id, env, Success $ ASTCall fname args maybesig)
       where maybesig = Success . fromJust $ Map.lookup fname env :: Result Type
-  x -> (id, env, x)
+  x -> (id, env, Success x)
 
 typeCallsS :: [AST] -> State ASTState ASTState 
 typeCallsS [] = do get 
 typeCallsS (x:xs) = do
   (id, table, ast) <- get
-  let (id, table, node) = updateAST (id, table) x
-  put (id, table, concatAST ast node)
+  let (id', table', node) = updateAST (id, table) x
+  put (id', table', concatAST ast node)
   typeCallsS xs

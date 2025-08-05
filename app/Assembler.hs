@@ -7,7 +7,7 @@ data Asm = Mov Operand Operand |
            Call String | Lea Operand Operand |
            Label String | Ret | Sub Operand Operand |
            Pop Operand | Push Operand | Inline String |
-           Comment String
+           Test Operand | Je String | Jmp String | Comment String
 
 -- Super big order of complexity find a nicer solution
 movFolding :: [Asm] -> [Asm] -> [Asm]
@@ -34,11 +34,17 @@ instance Show Asm where
   show (Push x) = "\n\tpush " ++ show x
   show (Sub x y) = "\n\tsub " ++ show x ++ ", " ++ show y
   show (Inline x) = "\n\t" ++ x
+  show (Test x) = "\n\ttest " ++ y ++ ", " ++ y 
+    where y = show x
+  show (Je s) = "\n\tje " ++ s
+  show (Jmp s) = "\n\tjmp " ++ s
   show (Comment s) = "\n\t; " ++ s
 
 generateAsm :: [Asm] -> String
 generateAsm asm = "global main\nsection .note.GNU-stack\nsection .text" ++ concatMap show optimised
-  where optimised = movFolding asm []
+  where
+    --optimised = movFolding asm []
+    optimised = asm
 
 generateData :: [String] -> String
 generateData stringBank =
@@ -60,3 +66,6 @@ ir2asm lr@(LoadVarRef offset size) = [irComment lr, Lea Reg{suffix="ax", size=8}
 ir2asm c@(AsmCall ident) = [irComment c, Call ident]
 ir2asm (AsmInline asm) = [Comment "Inlined Assembly", Inline asm]
 ir2asm (LoadRef x) = [Mov Reg{suffix="ax", size=8} $ Specific x]
+ir2asm (IfBody1 i1) = [Test Reg{suffix="ax", size=8}, Je i1]
+ir2asm (IfBody2 i2 i1) = [Jmp i2, Label i1]
+ir2asm (IfBody3 i2) = [Label i2]

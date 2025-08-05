@@ -3,7 +3,7 @@
 module Compile where
 
 import Parse (Token (..))
-import AST (AST (..), TypeSignature, token2ast, Type (..))
+import AST (typePropagation, AST (..), TypeSignature, token2ast, Type (..))
 import Misc (Result (..), Operand (..), systemV, (><))
 
 import Data.Bits ((.&.))
@@ -18,7 +18,9 @@ data IR = LoadMemory Word Word | StringLiteral String |
           LoadVarRef Word Word | LoadVar String |
           Var String Word Word | Enter String Word |
           Leave | MovReg Operand Operand |
-          AsmCall String | AsmInline String deriving (Show)
+          AsmCall String | AsmInline String |
+          IfBody1 String | IfBody2 String String | IfBody3 String
+        deriving (Show)
 
 typeSize :: Type -> Word
 typeSize TChar = 1
@@ -54,7 +56,14 @@ ast2ir (ASTFunc fname _ args body) = do
       next16 b = (0xFFFFFFFFFFFFFFF0 .&. b) + 16
 
   Success $ [Enter fname $ next16 reserved] <> bodyir' <> [Leave]
-
+ast2ir (ASTIf (Just id) cond t f) = do
+  condir <- ast2ir cond
+  tir <- ast2ir t
+  fir <- ast2ir f
+  Success $ condir ++ [IfBody1 i1] ++ tir ++ [IfBody2 i2 i1] ++ fir ++ [IfBody3 i2]
+  where
+    i1 = 'I':show id
+    i2 = 'I':show (id + 1)
 ast2ir (ASTCCall fname _) = Success [AsmInline $ "extern " ++ fname] 
 ast2ir (ASTVar name ast t) = do
   (><) [Var name (typeSize t) 0] <$> ast2ir ast

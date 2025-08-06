@@ -1,4 +1,4 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase, BlockArguments #-}
 
 module AST where
 
@@ -145,36 +145,42 @@ concatAST ast node = do
   node' <- node
   (><) [node'] <$> ast
 
-evalIfBody :: (Int, FunctionMap) -> AST -> AST -> AST -> (Int, FunctionMap, Result AST)
-evalIfBody s cond t f =
-   (2 + id'', table'', case (cond', t', f') of
-       (Success cond'', Success t'', Success f'') ->
-         Success $ ASTIf (Just $ 1 + id'') cond'' t'' f''
-       e -> Error "Test")
-   
-  where
-    (id, table, cond') = updateAST s cond
-    (id', table', t') = updateAST (id, table) t
-    (id'', table'', f') = updateAST (id', table') f
- 
+updateIfBody :: (Int, FunctionMap) -> AST -> AST -> AST -> (Int, FunctionMap, Result AST)
+updateIfBody s cond t f =
+    let (id, table, cond') = updateAST s cond in
+    let (id, table, t') = updateAST (id, table) t in
+    let (id, table, f') = updateAST (id, table) f in
+
+    (2 + id, table, do
+        cond <- cond'
+        t <- t'
+        f <- f'
+        Success $ ASTIf (Just $ 1 + id) cond t f)
 
 updateAST :: (Int, FunctionMap) -> AST -> (Int, FunctionMap, Result AST)
-updateAST s@(id, env) = \case
-  c@(ASTCCall fname (ret, _)) -> (id, Map.insert fname ret env, Success c)
-  (ASTIf Nothing cond t f) -> evalIfBody s cond t f 
+updateAST s@(id, table) = \case
+  c@(ASTCCall fname (ret, _)) -> (id, Map.insert fname ret table, Success c)
+  (ASTIf Nothing cond t f) -> updateIfBody s cond t f 
   f@(ASTFunc fname ret args body) ->
-    case typeCalls' body env id of
+    case typeCalls' body table id of
       (id, env, Success body) ->
         (id, Map.insert fname ret env, Success $ ASTFunc fname ret args body)
       (id, env, Error e) -> (id, env, Error e)
-  (ASTCall fname args d) -> (id, env, Success $ ASTCall fname args maybesig)
-      where maybesig = Success . fromJust $ Map.lookup fname env :: Result Type
-  x -> (id, env, Success x)
 
+  (ASTVar ident node t) -> (id', table', do
+                               node <- node'
+                               Success $ ASTVar ident node t)
+    where (id', table', node') = updateAST s node
+
+  (ASTCall fname args d) -> (id, table, Success $ ASTCall fname args maybesig)
+    where maybesig = Success . fromJust $ Map.lookup fname table  
+  x -> (id, table, Success x)
+  
 typeCallsS :: [AST] -> State ASTState ASTState 
 typeCallsS [] = do get 
 typeCallsS (x:xs) = do
   (id, table, ast) <- get
-  let (id', table', node) = updateAST (id, table) x
-  put (id', table', concatAST ast node)
+  let (id, table, node) = updateAST (id, table) x
+  put (id, table, concatAST ast node)
   typeCallsS xs
+

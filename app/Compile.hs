@@ -19,7 +19,8 @@ data IR = LoadMemory Word Word | StringLiteral String |
           Var String Word Word | Enter String Word |
           Leave | MovReg Operand Operand |
           AsmCall String | AsmInline String |
-          IfBody1 String | IfBody2 String String | IfBody3 String
+          IfBody1 String | IfBody2 String String | IfBody3 String |
+          If1 | If2 | If3
         deriving (Show)
 
 typeSize :: Type -> Word
@@ -56,14 +57,11 @@ ast2ir (ASTFunc fname _ args body) = do
       next16 b = (0xFFFFFFFFFFFFFFF0 .&. b) + 16
 
   Success $ [Enter fname $ next16 reserved] <> bodyir' <> [Leave]
-ast2ir (ASTIf (Just id) cond t f) = do
+ast2ir (ASTIf _ cond t f) = do
   condir <- ast2ir cond
   tir <- ast2ir t
   fir <- ast2ir f
-  Success $ condir ++ [IfBody1 i1] ++ tir ++ [IfBody2 i2 i1] ++ fir ++ [IfBody3 i2]
-  where
-    i1 = 'I':show id
-    i2 = 'I':show (id + 1)
+  Success $ condir ++ [If1] ++ tir ++ [If2] ++ fir ++ [If3]
 ast2ir (ASTCCall fname _) = Success [AsmInline $ "extern " ++ fname] 
 ast2ir (ASTVar name ast t) = do
   (><) [Var name (typeSize t) 0] <$> ast2ir ast
@@ -80,7 +78,7 @@ ast2ir (ASTCall fname args t) = do
   x <- buildParams args
   Success $ x <> [AsmCall fname]
 ast2ir (ASTIntegral v) = Success [MovReg Reg {suffix="ax", size=8} . Immediate $ show v]
-ast2ir (ASTVarRef ident) = Success [LoadVar ident]
+ast2ir (ASTVarRef ident _) = Success [LoadVar ident]
 ast2ir (ASTSpecialForm [Ident "ref", Ident ident]) = Success [GetVarRef ident]
 ast2ir (ASTDeref ast t) = do
   ir <- ast2ir ast
@@ -93,6 +91,25 @@ ast2ir x = Error $ "ast2ir error in token: " ++ show x
 -- TODO: Break this out into it's own distict step
 -- Maybe have different IR.
 -- See if it can be moved between the token2ast and ast2ir step
+
+addBranchIds :: [IR] -> [IR]
+addBranchIds ir = evalState (addBranchIdsS ir) (0, [])
+
+addBranchIdsS :: [IR] -> State (Int, [IR]) [IR]
+addBranchIdsS [] = do
+  (_, ir) <- get
+  return ir
+addBranchIdsS (x:xs) = do
+  (id, ir) <- get
+  case x of
+    If1 -> put (id + 2, ir ++ [IfBody1 $ toLabel $ id + 1])
+    If2 -> put (id, ir ++ [IfBody2 (toLabel id) $ toLabel $ id - 1])
+    If3 -> put (id, ir ++ [IfBody3 $ toLabel id])
+    _ -> put (id, ir ++ [x])
+  addBranchIdsS xs
+  where
+    toLabel :: Int -> String
+    toLabel id = "I" ++ show id
 
 replaceIdents :: [IR] -> State (Environment, [String], [IR]) ([String], [IR])
 replaceIdents [] = do

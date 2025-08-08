@@ -7,7 +7,7 @@ import Misc (Result (..), Operand (..), systemV, (><))
 import GHC.Float (float2Int)
 import Data.Maybe (fromJust)
 
-import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
+import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup, union)
 import Control.Monad.State (State, get, put, evalState)
 type FunctionMap = Map.HashMap String Type 
 
@@ -25,7 +25,7 @@ data AST = ASTExtern [String] |
           ASTCCall String TypeSignature |
           ASTVar String AST Type |
           ASTCall String [AST] (Result Type) |
-          ASTVarRef String |
+          ASTVarRef String (Result Type) |
           ASTInline String |
           ASTSpecialForm [Token] |
           ASTDeref AST Type |
@@ -33,6 +33,17 @@ data AST = ASTExtern [String] |
           ASTStr String |
           ASTIf (Maybe Int) AST AST AST
           deriving (Show)
+
+class MonoFunctor a where
+  omap :: (a -> a) -> a -> a
+
+instance MonoFunctor AST where
+  omap f (ASTFunc ident t params ast) = f $ ASTFunc ident t params (omap f <$> ast)
+  omap f (ASTVar ident ast t) = f $ ASTVar ident (omap f ast) t
+  omap f (ASTCall ident params mt) = f $ ASTCall ident (omap f <$> params) mt
+  omap f (ASTDeref ast t) = f $ ASTDeref (omap f ast) t
+  omap f (ASTIf mt comp a1 a2) = f $ ASTIf mt (omap f comp) (omap f a1) (omap f a2)
+  omap f x = f x
 
 stripStrings :: [Token] -> Result [String]
 stripStrings xs = mapM (\case
@@ -105,7 +116,7 @@ token2ast (Expr [Ident "if", cond, t, f]) =
   ASTIf Nothing <$> token2ast cond <*> token2ast t <*> token2ast f 
 
 token2ast (Num x) = Success . ASTIntegral $ float2Int x
-token2ast (Ident x) = Success $ ASTVarRef x
+token2ast (Ident x) = Success $ ASTVarRef x $ Error "Unkown type"
 token2ast (Expr ((Ident fname):xs)) = do
   ast <- mapM token2ast xs
   Success $ ASTCall fname ast defaultError 
@@ -127,60 +138,37 @@ typePropagation (ASTIntegral _) = Success TIntegral
 typePropagation (ASTStr _) = Success $ TPtr TChar
 typePropagation (ASTCall _ _ t) = t
 typePropagation (ASTDeref _ t) = Success t
+typePropagation (ASTVarRef _ t) = t 
 typePropagation x = Error $ "Cannot guess type from " ++ show x
 
-type ASTState = (Int, FunctionMap, Result [AST])
+-- Create a functionmap for each AST tree from the root + the old funcmap
+getTable :: AST -> FunctionMap -> FunctionMap
+getTable (ASTCCall ident (t, _)) table = Map.insert ident t table 
+getTable (ASTFunc ident t _ body) table = Map.insert ident t bodytable
+  where bodytable = foldr (\x -> Map.union $ getTable x table) table body
+getTable (ASTVar ident _ t) table = Map.insert ident t table
+getTable _ table = table
 
-thd :: (a, b, c) -> c
-thd (_, _, c) = c
+-- Fold over the program and accumulate the funcmap
+generateTable :: [AST] -> FunctionMap
+generateTable = foldr getTable Map.empty
 
-typeCalls :: [AST] -> Result [AST]
-typeCalls ast = thd $ typeCalls' ast Map.empty 0 
+tryIdent :: String -> FunctionMap -> Result Type
+tryIdent ident table =
+  case Map.lookup ident table of
+    Just x -> Success x
+    Nothing -> Error $ "Could not find type of `" ++ ident ++ "' in function/ident map" 
 
-typeCalls' :: [AST] -> FunctionMap -> Int -> ASTState 
-typeCalls' ast env id = evalState (typeCallsS ast) (id, env, Success []) 
+updateIdents :: FunctionMap -> AST -> AST
+updateIdents table (ASTCall ident ast (Error _)) = ASTCall ident ast $ tryIdent ident table
+updateIdents table (ASTVarRef ident (Error _)) = ASTVarRef ident $ tryIdent ident table
 
-concatAST :: Monad m => m [AST] -> m AST -> m [AST]
-concatAST ast node = do
-  node' <- node
-  (><) [node'] <$> ast
+-- Potentially here I could call type propagation
+-- Remeber children are evaluated before parent nodes with omap
+updateIdents _ x = x
 
-updateIfBody :: (Int, FunctionMap) -> AST -> AST -> AST -> (Int, FunctionMap, Result AST)
-updateIfBody s cond t f =
-    let (id, table, cond') = updateAST s cond in
-    let (id, table, t') = updateAST (id, table) t in
-    let (id, table, f') = updateAST (id, table) f in
-
-    (2 + id, table, do
-        cond <- cond'
-        t <- t'
-        f <- f'
-        Success $ ASTIf (Just $ 1 + id) cond t f)
-
-updateAST :: (Int, FunctionMap) -> AST -> (Int, FunctionMap, Result AST)
-updateAST s@(id, table) = \case
-  c@(ASTCCall fname (ret, _)) -> (id, Map.insert fname ret table, Success c)
-  (ASTIf Nothing cond t f) -> updateIfBody s cond t f 
-  f@(ASTFunc fname ret args body) ->
-    case typeCalls' body table id of
-      (id, env, Success body) ->
-        (id, Map.insert fname ret env, Success $ ASTFunc fname ret args body)
-      (id, env, Error e) -> (id, env, Error e)
-
-  (ASTVar ident node t) -> (id', table', do
-                               node <- node'
-                               Success $ ASTVar ident node t)
-    where (id', table', node') = updateAST s node
-
-  (ASTCall fname args d) -> (id, table, Success $ ASTCall fname args maybesig)
-    where maybesig = Success . fromJust $ Map.lookup fname table  
-  x -> (id, table, Success x)
-  
-typeCallsS :: [AST] -> State ASTState ASTState 
-typeCallsS [] = do get 
-typeCallsS (x:xs) = do
-  (id, table, ast) <- get
-  let (id, table, node) = updateAST (id, table) x
-  put (id, table, concatAST ast node)
-  typeCallsS xs
-
+updateProgram :: [AST] -> [AST]
+updateProgram program = operation <$> program
+  where
+    operation = omap $ updateIdents table
+    table = generateTable program

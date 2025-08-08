@@ -1,8 +1,8 @@
 module Main where
 
 import Parse (Token (..), value, values)
-import AST (line2ast, typeCalls)
-import Compile (ast2ir, replaceIdents, IR)
+import AST (line2ast, updateProgram)
+import Compile (ast2ir, replaceIdents, addBranchIds, IR)
 import Assembler (ir2asm, generateAsm, generateData, Asm)
 import Misc (Result (..))
 
@@ -15,9 +15,9 @@ import System.Environment (getArgs)
 
 execStaticAnalysis :: [(Int, Token)] -> Result ([String], [IR])
 execStaticAnalysis tokens = do
-  ast <- mapM line2ast tokens >>= typeCalls
-  ir <- concat <$> mapM ast2ir ast 
-  Success $ evalState (replaceIdents ir) (Map.empty, [], [])
+  ast <- mapM line2ast tokens
+  ir <- concat <$> mapM ast2ir (updateProgram ast) 
+  Success $ evalState (replaceIdents $ addBranchIds ir) (Map.empty, [], [])
 
 compile :: [(Int, Token)] -> Result String
 compile tokens = do

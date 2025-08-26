@@ -70,10 +70,16 @@ ast2ir (ASTCall fname args t) = do
   let  buildParams :: [AST] -> Result [IR]
        buildParams = setupParams . zip systemV
        setupParams :: [(Operand, AST)] -> Result [IR] 
-       setupParams = foldr (\(reg, ir) acc -> do
+       setupParams = foldr (\(Reg{suffix=s, size=_}, ir) acc -> do
                                a <- acc
                                x <- ast2ir ir
-                               Success $ a <> x <> [MovReg reg Reg{suffix="ax", size=typeSize t}]) (Success [])
+
+                               let
+                                 size = typeSize t
+                                 from = Reg{suffix="ax", size=size}
+                                 to = Reg{suffix=s, size=size}
+                               
+                               Success $ a <> x <> [MovReg to from]) (Success [])
 
   x <- buildParams args
   Success $ x <> [AsmCall fname]

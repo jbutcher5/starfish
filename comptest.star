@@ -3,15 +3,10 @@
 (ccall scanf Int (*Char *Int))
 (ccall atoi Int (*Char))
 
-(defun main ()
-  (define var "Hello, World!")
+(defun main Int ()
+  (define Int k 0)
+  (scanf "%d" (ref k))
 
-  (define user-input "This is a test")
-
-  (scanf "%d" (ref user-input))
-
-  (define Int k (atoi user-input))
-  
   (if k (puts "Wow") (puts "Oh"))
 
   0)

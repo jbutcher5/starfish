@@ -9,11 +9,13 @@ import Data.Maybe (fromJust)
 
 import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup, union)
 import Control.Monad.State (State, get, put, evalState)
-type FunctionMap = Map.HashMap String Type 
+
+data Type = TPtr Type | TIntegral | TChar
 
 type TypeSignature = (Type, [Type])
 
-data Type = TPtr Type | TIntegral | TChar
+type IdentMap = Map.HashMap String Type 
+type FunctionMap = Map.HashMap String TypeSignature
 
 instance Show Type where
   show (TPtr t) = "Ptr [" ++ show t ++ "]"
@@ -21,10 +23,10 @@ instance Show Type where
   show TChar = "Char"
 
 data AST = ASTExtern [String] |
-          ASTFunc String Type [(Operand, String, Type)] [AST] |
+          ASTFunc String TypeSignature [(Operand, String)] [AST] |
           ASTCCall String TypeSignature |
           ASTVar String AST Type |
-          ASTCall String [AST] (Result Type) |
+          ASTCall String [AST] (Result TypeSignature) |
           ASTVarRef String (Result Type) |
           ASTInline String |
           ASTSpecialForm [Token] |
@@ -73,8 +75,9 @@ token2ast (Expr ((Ident "defun"):(Ident name):(Ident ret):(Expr args):xs)) = do
                         Success (t', x)
                       e -> Error $ show e ++ " does not match pattern (Type, paramName)") args
   let (paramTypes, argNames) = unzip shit :: ([Type], [String])
-      argReg = zip3 systemV argNames paramTypes
-  ASTFunc name returnType argReg <$> mapM token2ast xs
+      argReg = zip systemV argNames
+      sig = (returnType, paramTypes)
+  ASTFunc name sig argReg <$> mapM token2ast xs
 
 token2ast (Expr ((Ident "defun"):(Ident name):(Expr args):xs)) = do
   ast <- mapM token2ast xs
@@ -85,8 +88,9 @@ token2ast (Expr ((Ident "defun"):(Ident name):(Expr args):xs)) = do
                         Success (t', x)
                       e -> Error $ show e ++ " does not match pattern (Type, paramName)") args
   let (paramTypes, argNames) = unzip shit :: ([Type], [String])
-      argReg = zip3 systemV argNames paramTypes
-  Success $ ASTFunc name returnType argReg ast 
+      argReg = zip systemV argNames
+      sig = (returnType, paramTypes)
+  Success $ ASTFunc name sig argReg ast 
 
 token2ast (Expr (Ident "defun":xs)) = Error $ "defun must be within the form (defun name Type (args) *body) not " ++ show xs
   
@@ -136,32 +140,45 @@ line2ast (line, token) =
 typePropagation :: AST -> Result Type
 typePropagation (ASTIntegral _) = Success TIntegral
 typePropagation (ASTStr _) = Success $ TPtr TChar
-typePropagation (ASTCall _ _ t) = t
+typePropagation (ASTCall _ _ x) = case x of
+  (Success (t, _)) -> Success t
+  Error e -> Error e
 typePropagation (ASTDeref _ t) = Success t
 typePropagation (ASTVarRef _ t) = t 
 typePropagation x = Error $ "Cannot guess type from " ++ show x
 
 -- Create a functionmap for each AST tree from the root + the old funcmap
-getTable :: AST -> FunctionMap -> FunctionMap
-getTable (ASTCCall ident (t, _)) table = Map.insert ident t table 
-getTable (ASTFunc ident t _ body) table = Map.insert ident t bodytable
-  where bodytable = foldr (\x -> Map.union $ getTable x table) table body
-getTable (ASTVar ident _ t) table = Map.insert ident t table
+getTable :: AST -> (IdentMap, FunctionMap) -> (IdentMap, FunctionMap)
+getTable (ASTCCall ident t) (x, table) = (x, Map.insert ident t table) 
+getTable (ASTFunc ident t _ body) table@(identTable, funcTable) =
+  (bodyIdentTable, Map.insert ident t bodyFuncTable)
+
+  where
+    f y (bt, ft) = (Map.union newbt bt, Map.union newft ft)
+      where (newbt, newft) = getTable y table
+    (bodyIdentTable, bodyFuncTable) = foldr f table body
+getTable (ASTVar ident _ t) (table, x) = (Map.insert ident t table, x)
 getTable _ table = table
 
 -- Fold over the program and accumulate the funcmap
-generateTable :: [AST] -> FunctionMap
-generateTable = foldr getTable Map.empty
+generateTable :: [AST] -> (IdentMap, FunctionMap)
+generateTable = foldr getTable (Map.empty, Map.empty)
 
-tryIdent :: String -> FunctionMap -> Result Type
+tryIdent :: String -> IdentMap -> Result Type
 tryIdent ident table =
   case Map.lookup ident table of
     Just x -> Success x
-    Nothing -> Error $ "Could not find type of `" ++ ident ++ "' in function/ident map" 
+    Nothing -> Error $ "Could not find type of `" ++ ident ++ "' in ident map" 
 
-updateIdents :: FunctionMap -> AST -> AST
-updateIdents table (ASTCall ident ast (Error _)) = ASTCall ident ast $ tryIdent ident table
-updateIdents table (ASTVarRef ident (Error _)) = ASTVarRef ident $ tryIdent ident table
+trySignature :: String -> FunctionMap -> Result TypeSignature
+trySignature ident table =
+  case Map.lookup ident table of
+    Just x -> Success x
+    Nothing -> Error $ "Could not find type of `" ++ ident ++ "' in ident map" 
+
+updateIdents :: (IdentMap, FunctionMap) -> AST -> AST
+updateIdents (_, table) (ASTCall ident ast (Error _)) = ASTCall ident ast $ trySignature ident table
+updateIdents (table, _) (ASTVarRef ident (Error _)) = ASTVarRef ident $ tryIdent ident table
 
 -- Potentially here I could call type propagation
 -- Remeber children are evaluated before parent nodes with omap

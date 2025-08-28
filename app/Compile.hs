@@ -9,6 +9,7 @@ import Misc (Result (..), Operand (..), systemV, (><))
 import Data.Bits ((.&.))
 import Data.Maybe (fromJust)
 
+import Debug.Trace
 import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
 import Control.Monad.State (State, get, put, evalState)
 type Environment = Map.HashMap String (Word, Word)
@@ -32,27 +33,27 @@ typeSize (TPtr _) = 8
 
 type ParamReg = (Operand, String, Type)     
 ast2ir :: AST -> Result [IR]
-ast2ir (ASTFunc fname _ args body) = do
+ast2ir (ASTFunc fname (_, t) args body) = do
   bodyir <- concat <$> mapM ast2ir body
-  let (reserved, bodyir') = evalState (calcReserved (args, bodyir)) (0, [])
+  let (reserved, bodyir') = evalState (calcReserved (args, t, bodyir)) (0, [])
 
       -- Calculate how much stack space is needed for each function
       -- Also, update variable offsets
-      calcReserved :: ([ParamReg], [IR]) -> State (Word, [IR]) (Word, [IR])
-      calcReserved ((reg, param, t):xs, ir) = do
+      calcReserved :: ([(Operand, String)], [Type], [IR]) -> State (Word, [IR]) (Word, [IR])
+      calcReserved ((reg, param):xs, t:ts, ir) = do
         (res, ir') <- get
         let size = typeSize t
             offset = res + size
         put (offset, ir' ++ [MovReg Reg{suffix="ax", size=size} reg, Var param size offset])
-        calcReserved (xs, ir)
-      calcReserved ([], x:xs) = do
+        calcReserved (xs, ts, ir)
+      calcReserved ([], [], x:xs) = do
         (res, ir') <- get
         let (offset, x') = case x of
               Var ident size _ -> (res + size, Var ident size $ res + size)
               _ -> (res, x)
         put (offset, ir' ++ [x'])
-        calcReserved ([], xs)
-      calcReserved ([], []) = get
+        calcReserved ([], [], xs)
+      calcReserved ([], _, []) = get
 
       next16 b = (0xFFFFFFFFFFFFFFF0 .&. b) + 16
 
@@ -65,17 +66,17 @@ ast2ir (ASTIf _ cond t f) = do
 ast2ir (ASTCCall fname _) = Success [AsmInline $ "extern " ++ fname] 
 ast2ir (ASTVar name ast t) = do
   (><) [Var name (typeSize t) 0] <$> ast2ir ast
-ast2ir (ASTCall fname args t) = do
-  t <- t
+ast2ir (ASTCall fname args sig) = do
+  (_, t) <- sig
   let  buildParams :: [AST] -> Result [IR]
-       buildParams = setupParams . zip systemV
-       setupParams :: [(Operand, AST)] -> Result [IR] 
-       setupParams = foldr (\(Reg{suffix=s, size=_}, ir) acc -> do
+       buildParams = setupParams . zip3 systemV t
+       setupParams :: [(Operand, Type, AST)] -> Result [IR] 
+       setupParams = foldr (\(Reg{suffix=s, size=_}, t, ir) acc -> do
                                a <- acc
                                x <- ast2ir ir
 
                                let
-                                 size = typeSize t
+                                 size = typeSize t 
                                  from = Reg{suffix="ax", size=size}
                                  to = Reg{suffix=s, size=size}
                                

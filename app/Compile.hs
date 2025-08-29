@@ -30,7 +30,6 @@ typeSize (TPtr _) = 8
 
 -- Phase 2: AST to IR
 
-type ParamReg = (Operand, String, Type)     
 ast2ir :: AST -> Result [IR]
 ast2ir (ASTFunc fname (_, t) args body) = do
   bodyir <- concat <$> mapM ast2ir body

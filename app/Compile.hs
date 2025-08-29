@@ -9,7 +9,6 @@ import Misc (Result (..), Operand (..), systemV, (><))
 import Data.Bits ((.&.))
 import Data.Maybe (fromJust)
 
-import Debug.Trace
 import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
 import Control.Monad.State (State, get, put, evalState)
 type Environment = Map.HashMap String (Word, Word)

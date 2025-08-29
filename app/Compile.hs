@@ -28,33 +28,39 @@ typeSize TChar = 1
 typeSize TIntegral = 4
 typeSize (TPtr _) = 8
 
+updateOffestsS :: ([(Operand, String)], [Type], [IR]) -> State (Word, [IR]) (Word, [IR])
+updateOffestsS ((reg, param):xs, t:ts, ir) = do
+  (res, ir') <- get
+  let size = typeSize t
+      offset = res + size
+  put (offset, ir' ++ [MovReg Reg{suffix="ax", size=size} reg, Var param size offset])
+  updateOffestsS (xs, ts, ir)
+updateOffestsS ([], [], x:xs) = do
+  (res, ir') <- get
+  let (offset, x') = case x of
+        Var ident size _ -> (res + size, Var ident size $ res + size)
+        _ -> (res, x)
+  put (offset, ir' ++ [x'])
+  updateOffestsS ([], [], xs)
+updateOffestsS ([], _, []) = get
+
+{- | updateOffets performs 2 key operations
+
+1. Update an AST's variable offsets
+2. Calculate the amount of memory to reserve
+
+It's useful to group these operations together because it can be done in a single pass over a function
+-}
+updateOffests args t ir = evalState (updateOffestsS (args, t, ir)) (0, [])
+
+next16 b = (0xFFFFFFFFFFFFFFF0 .&. b) + 16
+
 -- Phase 2: AST to IR
 
 ast2ir :: AST -> Result [IR]
 ast2ir (ASTFunc fname (_, t) args body) = do
   bodyir <- concat <$> mapM ast2ir body
-  let (reserved, bodyir') = evalState (calcReserved (args, t, bodyir)) (0, [])
-
-      -- Calculate how much stack space is needed for each function
-      -- Also, update variable offsets
-      calcReserved :: ([(Operand, String)], [Type], [IR]) -> State (Word, [IR]) (Word, [IR])
-      calcReserved ((reg, param):xs, t:ts, ir) = do
-        (res, ir') <- get
-        let size = typeSize t
-            offset = res + size
-        put (offset, ir' ++ [MovReg Reg{suffix="ax", size=size} reg, Var param size offset])
-        calcReserved (xs, ts, ir)
-      calcReserved ([], [], x:xs) = do
-        (res, ir') <- get
-        let (offset, x') = case x of
-              Var ident size _ -> (res + size, Var ident size $ res + size)
-              _ -> (res, x)
-        put (offset, ir' ++ [x'])
-        calcReserved ([], [], xs)
-      calcReserved ([], _, []) = get
-
-      next16 b = (0xFFFFFFFFFFFFFFF0 .&. b) + 16
-
+  let (reserved, bodyir') = updateOffests args t bodyir 
   Success $ [Enter fname $ next16 reserved] <> bodyir' <> [Leave]
 ast2ir (ASTIf _ cond t f) = do
   condir <- ast2ir cond

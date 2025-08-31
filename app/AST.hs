@@ -10,7 +10,7 @@ import Data.Maybe (fromJust)
 import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup, union)
 import Control.Monad.State (State, get, put, evalState)
 
-data Type = TPtr Type | TIntegral | TChar
+data Type = TPtr Type | TIntegral | TChar deriving Eq
 
 type TypeSignature = (Type, [Type])
 
@@ -28,8 +28,8 @@ data AST = ASTExtern [String] |
           ASTVar String AST Type |
           ASTCall String [AST] (Result TypeSignature) |
           ASTVarRef String (Result Type) |
+          ASTRef AST |
           ASTInline String |
-          ASTSpecialForm [Token] |
           ASTDeref AST Type |
           ASTIntegral Int |
           ASTStr String |
@@ -45,6 +45,7 @@ instance MonoFunctor AST where
   omap f (ASTCall ident params mt) = f $ ASTCall ident (omap f <$> params) mt
   omap f (ASTDeref ast t) = f $ ASTDeref (omap f ast) t
   omap f (ASTIf mt comp a1 a2) = f $ ASTIf mt (omap f comp) (omap f a1) (omap f a2)
+  omap f (ASTRef node) = f $ ASTRef $ f node
   omap f x = f x
 
 stripStrings :: [Token] -> Result [String]
@@ -95,7 +96,7 @@ token2ast (Expr ((Ident "defun"):(Ident name):(Expr args):xs)) = do
 token2ast (Expr (Ident "defun":xs)) = Error $ "defun must be within the form (defun name Type (args) *body) not " ++ show xs
   
 token2ast (Expr [Ident "asm", Str asm]) = Success $ ASTInline asm 
-token2ast (Expr form@[Ident "ref", expr]) = Success $ ASTSpecialForm form
+token2ast (Expr [Ident "ref", expr]) = ASTRef <$> token2ast expr 
 
 token2ast (Expr [Ident "deref", Ident t, expr]) =
   ASTDeref <$> token2ast expr <*> toType t
@@ -140,11 +141,11 @@ line2ast (line, token) =
 typePropagation :: AST -> Result Type
 typePropagation (ASTIntegral _) = Success TIntegral
 typePropagation (ASTStr _) = Success $ TPtr TChar
-typePropagation (ASTCall _ _ x) = case x of
-  (Success (t, _)) -> Success t
-  Error e -> Error e
+typePropagation (ASTCall _ _ x) = fst <$> x
 typePropagation (ASTDeref _ t) = Success t
-typePropagation (ASTVarRef _ t) = t 
+typePropagation (ASTVarRef _ t) = t
+typePropagation (ASTRef node) =
+  TPtr <$> typePropagation node
 typePropagation x = Error $ "Cannot guess type from " ++ show x
 
 -- Create a functionmap for each AST tree from the root + the old funcmap

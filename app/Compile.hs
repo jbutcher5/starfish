@@ -78,19 +78,23 @@ ast2ir (ASTCall fname args sig) = do
        setupParams = foldr (\(Reg{suffix=s, size=_}, t, ir) acc -> do
                                a <- acc
                                x <- ast2ir ir
-
+                               actualType <- typePropagation ir 
+                           
                                let
-                                 size = typeSize t 
+                                 size = typeSize t
                                  from = Reg{suffix="ax", size=size}
                                  to = Reg{suffix=s, size=size}
-                               
-                               Success $ a <> x <> [MovReg to from]) (Success [])
+
+                               if t == actualType then
+                                 Success $ a <> x <> [MovReg to from]
+                               else 
+                                 Error $ fname ++ " expected " ++ show t ++ " but got " ++ show actualType) (Success [])
 
   x <- buildParams args
   Success $ x <> [AsmCall fname]
 ast2ir (ASTIntegral v) = Success [MovReg Reg {suffix="ax", size=8} . Immediate $ show v]
 ast2ir (ASTVarRef ident _) = Success [LoadVar ident]
-ast2ir (ASTSpecialForm [Ident "ref", Ident ident]) = Success [GetVarRef ident]
+ast2ir (ASTRef (ASTVarRef ident _)) = Success [GetVarRef ident] -- TODO: Should type be unused?
 ast2ir (ASTDeref ast t) = do
   ir <- ast2ir ast
   Success $ ir <> [MovReg Reg {suffix="ax", size=typeSize t} $ Referenced Reg {suffix="ax", size=8}]

@@ -1,6 +1,6 @@
 module Misc where
 
-data Result a = Success a | Error String deriving Show
+data Result a = Success a | Error String deriving (Show)
 
 isError :: Result a -> Bool
 isError (Error _) = True
@@ -19,19 +19,25 @@ instance Monad Result where
   (Success a) >>= f = f a
   (Error e) >>= _ = Error e
 
-data Operand = StackPointer{offset :: Word, size :: Word} |
-               Reg{suffix :: String, size :: Word} |
-               Referenced Operand |
-               GeneralPurpose String |
-               Specific String |
-               Immediate String deriving Eq 
+data Operand
+  = StackPointer {offset :: Word, size :: Word}
+  | Reg {suffix :: String, size :: Word}
+  | Referenced Operand
+  | GeneralPurpose String
+  | Specific String
+  | Immediate String
+  deriving (Eq)
 
 instance Show Operand where
-  show StackPointer {offset=o, size=s} =
-    (case s of
-       8 -> "QWORD"
-       _ -> "DWORD") ++ " [rbp-" ++ show o ++ "]"
-  show Reg {suffix=suf, size=s} = case s of
+  show StackPointer {offset = o, size = s} =
+    ( case s of
+        8 -> "QWORD"
+        _ -> "DWORD"
+    )
+      ++ " [rbp-"
+      ++ show o
+      ++ "]"
+  show Reg {suffix = suf, size = s} = case s of
     8 -> 'r' : suf
     _ -> 'e' : suf
   show (Immediate s) = s
@@ -39,10 +45,14 @@ instance Show Operand where
   show (GeneralPurpose s) = s
   show (Referenced o) = "[" ++ show o ++ "]"
 
-systemV = [
-  Reg {suffix="di", size=4}, Reg {suffix="si", size=4},
-  Reg {suffix="dx", size=4}, Reg {suffix="cx", size=4},
-  GeneralPurpose "r8d", GeneralPurpose "r9d"]
+systemV =
+  [ Reg {suffix = "di", size = 4},
+    Reg {suffix = "si", size = 4},
+    Reg {suffix = "dx", size = 4},
+    Reg {suffix = "cx", size = 4},
+    GeneralPurpose "r8d",
+    GeneralPurpose "r9d"
+  ]
 
-(><) :: Semigroup a => a -> a -> a
+(><) :: (Semigroup a) => a -> a -> a
 a >< b = b <> a

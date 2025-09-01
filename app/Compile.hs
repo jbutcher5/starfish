@@ -2,26 +2,36 @@
 
 module Compile where
 
-import Parse (Token (..))
-import AST (typePropagation, AST (..), TypeSignature, token2ast, Type (..))
-import Misc (Result (..), Operand (..), systemV, (><))
-
+import AST (AST (..), Type (..), TypeSignature, token2ast, typePropagation)
+import Control.Monad.State (State, evalState, get, put)
 import Data.Bits ((.&.))
-import Data.Maybe (fromJust)
-
 import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup)
-import Control.Monad.State (State, get, put, evalState)
+import Data.Maybe (fromJust)
+import Misc (Operand (..), Result (..), systemV, (><))
+import Parse (Token (..))
+
 type Environment = Map.HashMap String (Word, Word)
 
-data IR = LoadMemory Word Word | StringLiteral String |
-          LoadRef String | GetVarRef String |
-          LoadVarRef Word Word | LoadVar String |
-          Var String Word Word | Enter String Word |
-          Leave | MovReg Operand Operand |
-          AsmCall String | AsmInline String |
-          IfBody1 String | IfBody2 String String | IfBody3 String |
-          If1 | If2 | If3
-        deriving (Show)
+data IR
+  = LoadMemory Word Word
+  | StringLiteral String
+  | LoadRef String
+  | GetVarRef String
+  | LoadVarRef Word Word
+  | LoadVar String
+  | Var String Word Word
+  | Enter String Word
+  | Leave
+  | MovReg Operand Operand
+  | AsmCall String
+  | AsmInline String
+  | IfBody1 String
+  | IfBody2 String String
+  | IfBody3 String
+  | If1
+  | If2
+  | If3
+  deriving (Show)
 
 typeSize :: Type -> Word
 typeSize TChar = 1
@@ -29,13 +39,13 @@ typeSize TIntegral = 4
 typeSize (TPtr _) = 8
 
 updateOffestsS :: ([(Operand, String)], [Type], [IR]) -> State (Word, [IR]) (Word, [IR])
-updateOffestsS ((reg, param):xs, t:ts, ir) = do
+updateOffestsS ((reg, param) : xs, t : ts, ir) = do
   (res, ir') <- get
   let size = typeSize t
       offset = res + size
-  put (offset, ir' ++ [MovReg Reg{suffix="ax", size=size} reg, Var param size offset])
+  put (offset, ir' ++ [MovReg Reg {suffix = "ax", size = size} reg, Var param size offset])
   updateOffestsS (xs, ts, ir)
-updateOffestsS ([], [], x:xs) = do
+updateOffestsS ([], [], x : xs) = do
   (res, ir') <- get
   let (offset, x') = case x of
         Var ident size _ -> (res + size, Var ident size $ res + size)
@@ -44,13 +54,12 @@ updateOffestsS ([], [], x:xs) = do
   updateOffestsS ([], [], xs)
 updateOffestsS ([], _, []) = get
 
-{- | updateOffets performs 2 key operations
-
-1. Update an AST's variable offsets
-2. Calculate the amount of memory to reserve
-
-It's useful to group these operations together because it can be done in a single pass over a function
--}
+-- | updateOffets performs 2 key operations
+--
+-- 1. Update an AST's variable offsets
+-- 2. Calculate the amount of memory to reserve
+--
+-- It's useful to group these operations together because it can be done in a single pass over a function
 updateOffests args t ir = evalState (updateOffestsS (args, t, ir)) (0, [])
 
 next16 b = (0xFFFFFFFFFFFFFFF0 .&. b) + 16
@@ -60,44 +69,48 @@ next16 b = (0xFFFFFFFFFFFFFFF0 .&. b) + 16
 ast2ir :: AST -> Result [IR]
 ast2ir (ASTFunc fname (_, t) args body) = do
   bodyir <- concat <$> mapM ast2ir body
-  let (reserved, bodyir') = updateOffests args t bodyir 
+  let (reserved, bodyir') = updateOffests args t bodyir
   Success $ [Enter fname $ next16 reserved] <> bodyir' <> [Leave]
 ast2ir (ASTIf _ cond t f) = do
   condir <- ast2ir cond
   tir <- ast2ir t
   fir <- ast2ir f
   Success $ condir ++ [If1] ++ tir ++ [If2] ++ fir ++ [If3]
-ast2ir (ASTCCall fname _) = Success [AsmInline $ "extern " ++ fname] 
+ast2ir (ASTCCall fname _) = Success [AsmInline $ "extern " ++ fname]
 ast2ir (ASTVar name ast t) = do
   (><) [Var name (typeSize t) 0] <$> ast2ir ast
 ast2ir (ASTCall fname args sig) = do
   (_, t) <- sig
-  let  buildParams :: [AST] -> Result [IR]
-       buildParams = setupParams . zip3 systemV t
-       setupParams :: [(Operand, Type, AST)] -> Result [IR] 
-       setupParams = foldr (\(Reg{suffix=s, size=_}, t, ir) acc -> do
-                               a <- acc
-                               x <- ast2ir ir
-                               actualType <- typePropagation ir 
-                           
-                               let
-                                 size = typeSize t
-                                 from = Reg{suffix="ax", size=size}
-                                 to = Reg{suffix=s, size=size}
+  let buildParams :: [AST] -> Result [IR]
+      buildParams = setupParams . zip3 systemV t
+      setupParams :: [(Operand, Type, AST)] -> Result [IR]
+      setupParams =
+        foldr
+          ( \(Reg {suffix = s, size = _}, t, ir) acc -> do
+              a <- acc
+              x <- ast2ir ir
+              actualType <- typePropagation ir
 
-                               if t == actualType then
-                                 Success $ a <> x <> [MovReg to from]
-                               else 
-                                 Error $ fname ++ " expected " ++ show t ++ " but got " ++ show actualType) (Success [])
+              let size = typeSize t
+                  from = Reg {suffix = "ax", size = size}
+                  to = Reg {suffix = s, size = size}
+
+              if t == actualType
+                then
+                  Success $ a <> x <> [MovReg to from]
+                else
+                  Error $ fname ++ " expected " ++ show t ++ " but got " ++ show actualType
+          )
+          (Success [])
 
   x <- buildParams args
   Success $ x <> [AsmCall fname]
-ast2ir (ASTIntegral v) = Success [MovReg Reg {suffix="ax", size=8} . Immediate $ show v]
+ast2ir (ASTIntegral v) = Success [MovReg Reg {suffix = "ax", size = 8} . Immediate $ show v]
 ast2ir (ASTVarRef ident _) = Success [LoadVar ident]
 ast2ir (ASTRef (ASTVarRef ident _)) = Success [GetVarRef ident] -- TODO: Should type be unused?
 ast2ir (ASTDeref ast t) = do
   ir <- ast2ir ast
-  Success $ ir <> [MovReg Reg {suffix="ax", size=typeSize t} $ Referenced Reg {suffix="ax", size=8}]
+  Success $ ir <> [MovReg Reg {suffix = "ax", size = typeSize t} $ Referenced Reg {suffix = "ax", size = 8}]
 ast2ir (ASTInline asm) = Success [AsmInline asm]
 ast2ir (ASTStr s) = Success [StringLiteral s]
 ast2ir x = Error $ "ast2ir error in token: " ++ show x
@@ -114,7 +127,7 @@ addBranchIdsS :: [IR] -> State (Int, [IR]) [IR]
 addBranchIdsS [] = do
   (_, ir) <- get
   return ir
-addBranchIdsS (x:xs) = do
+addBranchIdsS (x : xs) = do
   (id, ir) <- get
   case x of
     If1 -> put (id + 2, ir ++ [IfBody1 $ toLabel $ id + 1])
@@ -130,15 +143,17 @@ replaceIdents :: [IR] -> State (Environment, [String], [IR]) ([String], [IR])
 replaceIdents [] = do
   (_, stringBank, ir) <- get
   return (stringBank, ir)
-replaceIdents (x:xs) = do
+replaceIdents (x : xs) = do
   (env, stringBank, ir) <- get
   case x of
     LoadVar ident -> put (env, stringBank, ir ++ [LoadMemory size offset])
-      where (offset, size) = fromJust $ Map.lookup ident env
+      where
+        (offset, size) = fromJust $ Map.lookup ident env
     GetVarRef ident -> put (env, stringBank, ir ++ [LoadVarRef offset size])
-      where (offset, size) = fromJust $ Map.lookup ident env
+      where
+        (offset, size) = fromJust $ Map.lookup ident env
     v@(Var ident size offset) -> put (Map.insert ident (offset, size) env, stringBank, ir ++ [v])
-    StringLiteral s -> put (env, s:stringBank, ir ++ [LoadRef $ "LC" ++ show (length stringBank)])
+    StringLiteral s -> put (env, s : stringBank, ir ++ [LoadRef $ "LC" ++ show (length stringBank)])
     Leave -> put (Map.empty, stringBank, ir ++ [Leave])
     x -> put (env, stringBank, ir ++ [x])
   replaceIdents xs

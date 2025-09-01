@@ -1,20 +1,21 @@
-{-# LANGUAGE LambdaCase, BlockArguments #-}
+{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE LambdaCase #-}
 
 module AST where
 
-import Parse (Token (..))
-import Misc (Result (..), Operand (..), systemV, (><))
-import GHC.Float (float2Int)
-import Data.Maybe (fromJust)
-
+import Control.Monad.State (State, evalState, get, put)
 import qualified Data.HashMap.Strict as Map (HashMap, empty, insert, lookup, union)
-import Control.Monad.State (State, get, put, evalState)
+import Data.Maybe (fromJust)
+import GHC.Float (float2Int)
+import Misc (Operand (..), Result (..), systemV, (><))
+import Parse (Token (..))
 
-data Type = TPtr Type | TIntegral | TChar deriving Eq
+data Type = TPtr Type | TIntegral | TChar deriving (Eq)
 
 type TypeSignature = (Type, [Type])
 
-type IdentMap = Map.HashMap String Type 
+type IdentMap = Map.HashMap String Type
+
 type FunctionMap = Map.HashMap String TypeSignature
 
 instance Show Type where
@@ -22,19 +23,20 @@ instance Show Type where
   show TIntegral = "Int"
   show TChar = "Char"
 
-data AST = ASTExtern [String] |
-          ASTFunc String TypeSignature [(Operand, String)] [AST] |
-          ASTCCall String TypeSignature |
-          ASTVar String AST Type |
-          ASTCall String [AST] (Result TypeSignature) |
-          ASTVarRef String (Result Type) |
-          ASTRef AST |
-          ASTInline String |
-          ASTDeref AST Type |
-          ASTIntegral Int |
-          ASTStr String |
-          ASTIf (Maybe Int) AST AST AST
-          deriving (Show)
+data AST
+  = ASTExtern [String]
+  | ASTFunc String TypeSignature [(Operand, String)] [AST]
+  | ASTCCall String TypeSignature
+  | ASTVar String AST Type
+  | ASTCall String [AST] (Result TypeSignature)
+  | ASTVarRef String (Result Type)
+  | ASTRef AST
+  | ASTInline String
+  | ASTDeref AST Type
+  | ASTIntegral Int
+  | ASTStr String
+  | ASTIf (Maybe Int) AST AST AST
+  deriving (Show)
 
 class MonoFunctor a where
   omap :: (a -> a) -> a -> a
@@ -49,15 +51,20 @@ instance MonoFunctor AST where
   omap f x = f x
 
 stripStrings :: [Token] -> Result [String]
-stripStrings xs = mapM (\case
-                        Ident str -> Success str
-                        x -> Error $
-                          "Could not convert " ++ show x ++ " in " ++ show xs ++ " to a String") xs
+stripStrings xs =
+  mapM
+    ( \case
+        Ident str -> Success str
+        x ->
+          Error $
+            "Could not convert " ++ show x ++ " in " ++ show xs ++ " to a String"
+    )
+    xs
 
 toType :: String -> Result Type
-toType "Char" = Success TChar 
+toType "Char" = Success TChar
 toType "Int" = Success TIntegral
-toType ('*':xs) = Success TPtr <*> toType xs 
+toType ('*' : xs) = Success TPtr <*> toType xs
 toType t = Error $ t ++ " is not a valid type"
 
 token2ast :: Token -> Result AST
@@ -65,39 +72,42 @@ token2ast (Expr [Ident "define", Ident t, Ident label, token]) =
   ASTVar label <$> token2ast token <*> toType t
 token2ast (Expr [Ident "define", Ident label, token]) = do
   ast <- token2ast token
-  Success (ASTVar label ast) <*> typePropagation ast 
-token2ast (Expr (Ident "define":xs)) = Error $ "define type must be determinable at compile time " ++ show xs
-
-token2ast (Expr ((Ident "defun"):(Ident name):(Ident ret):(Expr args):xs)) = do
+  Success (ASTVar label ast) <*> typePropagation ast
+token2ast (Expr (Ident "define" : xs)) = Error $ "define type must be determinable at compile time " ++ show xs
+token2ast (Expr ((Ident "defun") : (Ident name) : (Ident ret) : (Expr args) : xs)) = do
   returnType <- toType ret
-  shit <- mapM (\case
-                      Expr [Ident t, Ident x] -> do
-                        t' <- toType t
-                        Success (t', x)
-                      e -> Error $ show e ++ " does not match pattern (Type, paramName)") args
+  shit <-
+    mapM
+      ( \case
+          Expr [Ident t, Ident x] -> do
+            t' <- toType t
+            Success (t', x)
+          e -> Error $ show e ++ " does not match pattern (Type, paramName)"
+      )
+      args
   let (paramTypes, argNames) = unzip shit :: ([Type], [String])
       argReg = zip systemV argNames
       sig = (returnType, paramTypes)
   ASTFunc name sig argReg <$> mapM token2ast xs
-
-token2ast (Expr ((Ident "defun"):(Ident name):(Expr args):xs)) = do
+token2ast (Expr ((Ident "defun") : (Ident name) : (Expr args) : xs)) = do
   ast <- mapM token2ast xs
   returnType <- typePropagation $ last ast
-  shit <- mapM (\case
-                      Expr [Ident t, Ident x] -> do
-                        t' <- toType t
-                        Success (t', x)
-                      e -> Error $ show e ++ " does not match pattern (Type, paramName)") args
+  shit <-
+    mapM
+      ( \case
+          Expr [Ident t, Ident x] -> do
+            t' <- toType t
+            Success (t', x)
+          e -> Error $ show e ++ " does not match pattern (Type, paramName)"
+      )
+      args
   let (paramTypes, argNames) = unzip shit :: ([Type], [String])
       argReg = zip systemV argNames
       sig = (returnType, paramTypes)
-  Success $ ASTFunc name sig argReg ast 
-
-token2ast (Expr (Ident "defun":xs)) = Error $ "defun must be within the form (defun name Type (args) *body) not " ++ show xs
-  
-token2ast (Expr [Ident "asm", Str asm]) = Success $ ASTInline asm 
-token2ast (Expr [Ident "ref", expr]) = ASTRef <$> token2ast expr 
-
+  Success $ ASTFunc name sig argReg ast
+token2ast (Expr (Ident "defun" : xs)) = Error $ "defun must be within the form (defun name Type (args) *body) not " ++ show xs
+token2ast (Expr [Ident "asm", Str asm]) = Success $ ASTInline asm
+token2ast (Expr [Ident "ref", expr]) = ASTRef <$> token2ast expr
 token2ast (Expr [Ident "deref", Ident t, expr]) =
   ASTDeref <$> token2ast expr <*> toType t
 token2ast (Expr [Ident "deref", expr]) = do
@@ -107,28 +117,22 @@ token2ast (Expr [Ident "deref", expr]) = do
     Success t -> Error "Deref must dereference a pointer"
     e -> e
   Success $ ASTDeref ast t
-token2ast (Expr (Ident "deref":xs)) = Error $ "deref must be within the form (deref Type Ptr) not " ++ show xs
-
+token2ast (Expr (Ident "deref" : xs)) = Error $ "deref must be within the form (deref Type Ptr) not " ++ show xs
 token2ast (Expr [Ident "ccall", Ident fname, Ident return, Expr parameters]) = do
   returnType <- toType return
   paramTypes <- mapM toType =<< stripStrings parameters
   Success $ ASTCCall fname (returnType, paramTypes)
-  
-token2ast (Expr (Ident "extern":externs)) = ASTExtern <$> stripStrings externs
+token2ast (Expr (Ident "extern" : externs)) = ASTExtern <$> stripStrings externs
 token2ast (Expr [Ident "extern"]) = Error "extern must not be empty"
-
 token2ast (Expr [Ident "if", cond, t, f]) =
-  ASTIf Nothing <$> token2ast cond <*> token2ast t <*> token2ast f 
-
+  ASTIf Nothing <$> token2ast cond <*> token2ast t <*> token2ast f
 token2ast (Num x) = Success . ASTIntegral $ float2Int x
 token2ast (Ident x) = Success $ ASTVarRef x $ Error "Unkown type"
-token2ast (Expr ((Ident fname):xs)) = do
+token2ast (Expr ((Ident fname) : xs)) = do
   ast <- mapM token2ast xs
-  Success $ ASTCall fname ast defaultError 
-
+  Success $ ASTCall fname ast defaultError
   where
     defaultError = Error $ "Can't find a definition for " ++ fname
-
 token2ast (Str s) = Success $ ASTStr s
 token2ast expr = Error $ "Unkown expr " ++ show expr
 
@@ -150,13 +154,13 @@ typePropagation x = Error $ "Cannot guess type from " ++ show x
 
 -- Create a functionmap for each AST tree from the root + the old funcmap
 getTable :: AST -> (IdentMap, FunctionMap) -> (IdentMap, FunctionMap)
-getTable (ASTCCall ident t) (x, table) = (x, Map.insert ident t table) 
+getTable (ASTCCall ident t) (x, table) = (x, Map.insert ident t table)
 getTable (ASTFunc ident t _ body) table@(identTable, funcTable) =
   (bodyIdentTable, Map.insert ident t bodyFuncTable)
-
   where
     f y (bt, ft) = (Map.union newbt bt, Map.union newft ft)
-      where (newbt, newft) = getTable y table
+      where
+        (newbt, newft) = getTable y table
     (bodyIdentTable, bodyFuncTable) = foldr f table body
 getTable (ASTVar ident _ t) (table, x) = (Map.insert ident t table, x)
 getTable _ table = table
@@ -169,18 +173,17 @@ tryIdent :: String -> IdentMap -> Result Type
 tryIdent ident table =
   case Map.lookup ident table of
     Just x -> Success x
-    Nothing -> Error $ "Could not find type of `" ++ ident ++ "' in ident map" 
+    Nothing -> Error $ "Could not find type of `" ++ ident ++ "' in ident map"
 
 trySignature :: String -> FunctionMap -> Result TypeSignature
 trySignature ident table =
   case Map.lookup ident table of
     Just x -> Success x
-    Nothing -> Error $ "Could not find type of `" ++ ident ++ "' in ident map" 
+    Nothing -> Error $ "Could not find type of `" ++ ident ++ "' in ident map"
 
 updateIdents :: (IdentMap, FunctionMap) -> AST -> AST
 updateIdents (_, table) (ASTCall ident ast (Error _)) = ASTCall ident ast $ trySignature ident table
 updateIdents (table, _) (ASTVarRef ident (Error _)) = ASTVarRef ident $ tryIdent ident table
-
 -- Potentially here I could call type propagation
 -- Remeber children are evaluated before parent nodes with omap
 updateIdents _ x = x

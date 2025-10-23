@@ -1,8 +1,30 @@
-out: out.o
-	gcc -g -no-pie -o out out.o
+CC      = gcc
+INCLUDE = app
+OBJ     = build
+SRC     = app
+SRCS    = $(SRC)/main.c
+SRCS    += $(shell find $(SRC) -type f -name '*.c')
+OBJS    = $(patsubst $(SRC)/%.c,$(OBJ)/%.o,$(SRCS))
+EXE     = starc
+CFLAGS  = -I$(INCLUDE) -std=c17 -pedantic
+LDLIBS  =
 
-out.o: out.asm
-	nasm -g -f elf64 -o out.o out.asm
+.PHONY: clean
 
-out.asm: app/Main.hs app/AST.hs app/Misc.hs app/Compile.hs app/Assembler.hs comptest.star
-	cabal run exes -- c comptest.star
+$(OBJ)/%.o: $(SRC)/%.c
+	@mkdir -p "$(@D)"
+	@echo "Compiling: $< -> $@"
+	@$(CC) -c -g $(CFLAGS) $< -o $@
+
+$(EXE): $(OBJS)
+	@echo "Building final executable: $@"
+	@$(CC) $^ -g $(LDLIBS) -o $@
+
+$(OBJ):
+	mkdir -p $@
+
+format: $(SRC)
+	clang-format $^ -i
+
+clean:
+	rm -rf $(OBJ) $(EXE)

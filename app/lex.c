@@ -16,13 +16,13 @@ Token Next(char *begin) {
   if (*begin == '"') {
     int i = 1;
     for (; begin[i] != '"'; i++) {}
-    return (Token){.type = String, .start = begin, .len = i};
+    return (Token){.type = String, .start = begin, .len = i + 1};
   }
 
   if (IS_ALPHA(*begin)) {
     int i = 1;
     for (; IS_ALPHA(begin[i]); i++) {}
-    return (Token){.type = Atom, .start = begin, .len = i};
+    return (Token){.type = Atom, .start = begin, .len = i + 1};
   }
 
   return (Token){.type = Error, .start = 0, .len = 0};

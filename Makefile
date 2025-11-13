@@ -1,17 +1,17 @@
-CC      = gcc
+CC      = clang++
 INCLUDE = app
 OBJ     = build
 SRC     = app
-SRCS    = $(SRC)/main.c
-SRCS    += $(shell find $(SRC) -type f -name '*.c')
-OBJS    = $(patsubst $(SRC)/%.c,$(OBJ)/%.o,$(SRCS))
-EXE     = starc
-CFLAGS  = -I$(INCLUDE) -std=c17 -pedantic
+SRCS    = $(SRC)/main.cpp
+SRCS    += $(shell find $(SRC) -type f -name '*.cpp')
+OBJS    = $(patsubst $(SRC)/%.cpp,$(OBJ)/%.o,$(SRCS))
+EXE     = starc++
+CFLAGS  = -I$(INCLUDE) -std=c++20
 LDLIBS  =
 
 .PHONY: clean
 
-$(OBJ)/%.o: $(SRC)/%.c
+$(OBJ)/%.o: $(SRC)/%.cpp
 	@mkdir -p "$(@D)"
 	@echo "Compiling: $< -> $@"
 	@$(CC) -c -g $(CFLAGS) $< -o $@

@@ -1,13 +1,14 @@
 #pragma once
+#include "util.hpp"
 #include <stdint.h>
 #include <stdbool.h>
 
 typedef enum {
-  Atom,
-  String,
-  Error,
-  LeftParen,
-  RightParen
+  LexerAtom,
+  LexerString,
+  LexerError,
+  LexerLeftParen,
+  LexerRightParen
 } TokenType;
 
 typedef struct {
@@ -16,4 +17,4 @@ typedef struct {
   uint16_t len;
 } Token;
 
-Token *Lex(char *source);
+Array<Token> Lex(char *source);

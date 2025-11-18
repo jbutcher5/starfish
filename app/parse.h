@@ -18,4 +18,4 @@ typedef struct {
   uint16_t len;
 } ParserStringData;
 
-List parse(List *tokens);
+List parse(List *tokens, uint16_t depth);

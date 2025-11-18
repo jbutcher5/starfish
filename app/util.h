@@ -12,4 +12,5 @@ List list_new(uint8_t type_size);
 uint8_t list_push(List *list, void *data);
 void *list_grab(List *list, uint32_t n);
 void *list_pop(List *list);
-
+List *list_slice(List *list, uint32_t start, uint32_t end);
+void list_free(List *list);

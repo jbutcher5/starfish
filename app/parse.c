@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-List parse(List *tokens) {
+List parse(List *tokens, uint16_t depth) {
   static uint8_t __paren_stack_init = 0;
   static List paren_stack;
 
@@ -15,14 +15,13 @@ List parse(List *tokens) {
   }
   
   List expr = list_new(sizeof(Cell));
-  
 
   Token *t = (Token *)list_grab(tokens, 0);
 
   for (uint16_t i = 1; i < tokens->size; i++) {
     t = (Token *)list_grab(tokens, i);
 
-    if (t->type == LexerAtom) {
+    if (depth == paren_stack.size && t->type == LexerAtom) {
       ParserStringData *string = malloc(sizeof(ParserStringData));
       *string = (ParserStringData){.start = t->start, .len = t->len};
       Cell cell = {.type = ParserSymbol, .data = string};
@@ -30,12 +29,12 @@ List parse(List *tokens) {
       list_push(&expr, &cell);
     }
 
-    if (t->type == LexerString) {
+    if (depth == paren_stack.size && t->type == LexerString) {
       ParserStringData *string = malloc(sizeof(ParserStringData));
       *string = (ParserStringData){.start = t->start, .len = t->len};
 
       Cell cell = {.type = ParserString, .data = string};
-      
+
       list_push(&expr, &cell);
     }
 
@@ -45,15 +44,17 @@ List parse(List *tokens) {
     if (t->type == LexerRightParen) {
       uint16_t *last = (uint16_t*)list_pop(&paren_stack);
 
-      printf("AAhhhh\n");
-
       if (last) {
-	
-	printf("Popped a ')' where '(' starts at %d", *last);
-	//S_Expr *sexpr = parse(tokens.clone_slice(last.unwrap(), i).unwrap());
+	// Relies on copying buffer data. Bad.
 
-        //list_push(
-        //    (Cell){.type = ParserSExpr, .data = sexpr});
+        List *token_subset = list_slice(tokens, *last, i);
+	List *parsed_subset = malloc(sizeof(Cell));
+        *parsed_subset = parse(token_subset, paren_stack.size);
+	list_free(token_subset);
+
+	Cell cell = {.type = ParserSExpr, .data = (void*)parsed_subset};
+	
+	list_push(&expr, &cell);
       }
 
       else {

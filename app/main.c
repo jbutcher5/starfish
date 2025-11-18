@@ -14,6 +14,6 @@ int main(void) {
     token = (Token*)list_grab(&tokens, i + 1);
   }
 
-  List ast = parse(&tokens);
+  List ast = parse(&tokens, 0);
   return 0;
 }

@@ -42,3 +42,26 @@ void *list_pop(List *list) {
 
   return result;
 }
+
+List *list_slice(List *list, uint32_t start, uint32_t end) {
+  List *result = malloc(sizeof(List));
+
+  if (!result)
+    return 0;
+  
+  *result = list_new(list->type_size);
+
+  for (int i = start; i < start + end - 1; i++)
+    list_push(result, list_grab(list, i));
+
+  return result;
+}
+
+void list_free(List *list) {
+  free(list->buffer);
+
+  list->size = 0;
+  list->type_size = 0;
+  list->buffer = 0;
+  list->alloc_size = 0;
+}

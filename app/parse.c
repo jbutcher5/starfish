@@ -45,8 +45,6 @@ List parse(List *tokens, uint16_t depth) {
       uint16_t *last = (uint16_t*)list_pop(&paren_stack);
 
       if (last) {
-	// Relies on copying buffer data. Bad.
-
         List *token_subset = list_slice(tokens, *last, i);
 	List *parsed_subset = malloc(sizeof(Cell));
         *parsed_subset = parse(token_subset, paren_stack.size);
@@ -64,4 +62,27 @@ List parse(List *tokens, uint16_t depth) {
   }
 
   return expr;
+}
+
+void print_ast(List *ast) {
+  Cell *cell = list_grab(ast, 0);
+
+  printf("( ");
+  
+  for (uint16_t i = 1; cell; i++) {
+
+    if (cell->type == ParserString || cell->type == ParserSymbol) {
+      ParserStringData *string = cell->data;
+      
+      printf("%.*s ", string->len, string->start);
+    }
+
+    if (cell->type == ParserSExpr) {
+      print_ast(cell->data);
+    }
+    
+    cell = list_grab(ast, i);
+  }
+
+  printf(") ");
 }

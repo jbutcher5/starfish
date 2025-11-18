@@ -8,12 +8,20 @@ int main(void) {
 
   Token *token = (Token*)list_grab(&tokens, 0);
 
+  puts("Token Analysis:");
+  
   for (int i = 0; token; i++) {
-    printf("%.*s\n", token->len, token->start);
+    printf("Token %d: %.*s\n", i, token->len, token->start);
     
     token = (Token*)list_grab(&tokens, i + 1);
   }
-
+  
   List ast = parse(&tokens, 0);
+
+  puts("\nParser Analysis:");
+  
+  print_ast(&ast);
+  puts("\n");
+
   return 0;
 }

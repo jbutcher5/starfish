@@ -19,3 +19,4 @@ typedef struct {
 } ParserStringData;
 
 List parse(List *tokens, uint16_t depth);
+void print_ast(List *ast);

@@ -1,7 +1,8 @@
 #include "lex.h"
 #include "util.h"
 
-#define IS_ALPHA(x) (((x) >= 65 && (x) <= 90) || ((x) >= 97 && (x) <= 122))
+#define IS_ALPHA(x) (((x) >= 65 && (x) <= 90) || ((x) >= 97 && (x) <= 122) || ((x) >= 42 && (x) <= 46))
+#define IS_NUM(x) ((x) >= 48 && (x) <= 57)
 
 Token Next(char *begin) {
   if (*begin == ' ' || *begin == '\n')
@@ -19,7 +20,13 @@ Token Next(char *begin) {
     return (Token){.type = LexerString, .start = begin, .len = i + 1};
   }
 
-  if (IS_ALPHA(*begin)) {
+  if (IS_NUM(*begin)) {
+    uint16_t i = 1;
+    while (IS_NUM(begin[i])) i++;
+    return (Token){.type = LexerInt, .start = begin, .len = i};
+  }
+  
+  if (IS_ALPHA(*begin) || IS_NUM(*begin)) {
     uint16_t i = 1;
     while (IS_ALPHA(begin[i])) i++;
     return (Token){.type = LexerAtom, .start = begin, .len = i};

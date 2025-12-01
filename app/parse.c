@@ -4,64 +4,97 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <inttypes.h>
 
-List parse(List *tokens, uint16_t depth) {
-  static uint8_t __paren_stack_init = 0;
-  static List paren_stack;
+void atoi_n(uint64_t *result, char *str, uint16_t length) {
+  *result = 0;
 
-  if (!__paren_stack_init) {
-    paren_stack = list_new(sizeof(uint16_t));
-    __paren_stack_init = 1;
-  }
-  
-  List expr = list_new(sizeof(Cell));
+  for (int i = 0; i < length; i++)
+    *result += (str[i] - 48) * (i + 1);
+}
 
-  Token *t = (Token *)list_grab(tokens, 0);
+List *get_insertion_list(List *ast, List *depth) {
+  List *insertion_list = ast;
 
-  for (uint16_t i = 1; i < tokens->size; i++) {
-    t = (Token *)list_grab(tokens, i);
-
-    if (depth == paren_stack.size && t->type == LexerAtom) {
-      ParserStringData *string = malloc(sizeof(ParserStringData));
-      *string = (ParserStringData){.start = t->start, .len = t->len};
-      Cell cell = {.type = ParserSymbol, .data = string};
-
-      list_push(&expr, &cell);
-    }
-
-    if (depth == paren_stack.size && t->type == LexerString) {
-      ParserStringData *string = malloc(sizeof(ParserStringData));
-      *string = (ParserStringData){.start = t->start, .len = t->len};
-
-      Cell cell = {.type = ParserString, .data = string};
-
-      list_push(&expr, &cell);
-    }
-
-    if (t->type == LexerLeftParen)
-      list_push(&paren_stack, &i);
-
-    if (t->type == LexerRightParen) {
-      uint16_t *last = (uint16_t*)list_pop(&paren_stack);
-
-      if (last) {
-        List *token_subset = list_slice(tokens, *last, i);
-	List *parsed_subset = malloc(sizeof(Cell));
-        *parsed_subset = parse(token_subset, paren_stack.size);
-	list_free(token_subset);
-
-	Cell cell = {.type = ParserSExpr, .data = (void*)parsed_subset};
+  for (uint32_t j = 0; j < depth->size; j++) {
+    uint16_t *depth_i = list_grab(depth, j);
+    Cell *sexpr = list_grab(insertion_list, *depth_i);
 	
-	list_push(&expr, &cell);
-      }
+    if (sexpr->type != ParserSExpr) {
+      puts("Expected to index an sexpr is not");
+      exit(1);
+    }
+      
+    insertion_list = sexpr->data;
+  }
 
-      else {
-	return expr;
-      }
+  return insertion_list;
+
+}
+
+List parse(List *tokens) {
+  List ast = list_new(sizeof(Cell));
+  List depth = list_new(sizeof(uint32_t));
+
+  List *insertion_list = &ast;
+  Cell cell;
+
+  for (uint32_t i = 0; i < tokens->size; i++) {
+    
+    Token *t = (Token *)list_grab(tokens, i);
+
+    if (t->type == LexerAtom) {
+      ParserStringData *string = malloc(sizeof(ParserStringData));
+      *string = (ParserStringData){.start = t->start, .len = t->len};
+
+      cell = (Cell){.type = ParserSymbol, .data = string};
+      list_push(insertion_list, &cell);
+    }
+
+    else if (t->type == LexerString) {
+      ParserStringData *string = malloc(sizeof(ParserStringData));
+      *string = (ParserStringData){.start = t->start, .len = t->len};
+
+      cell = (Cell){.type = ParserString, .data = string};
+      list_push(insertion_list, &cell);
+    }
+
+    else if (t->type == LexerInt) {
+      uint64_t *i = malloc(sizeof(uint64_t));
+
+      atoi_n(i, t->start, t->len);
+
+      cell = (Cell){.type = ParserInt, .data = i};
+      list_push(insertion_list, &cell);
+    }
+
+    else if (t->type == LexerLeftParen) {
+      List *list = malloc(sizeof(List));
+      *list = list_new(sizeof(Cell));
+
+      cell = (Cell){.type = ParserSExpr, .data = list};
+      list_push(insertion_list, &cell);
+
+      uint32_t location = insertion_list->size - 1;
+      list_push(&depth, &location);
+
+      insertion_list = get_insertion_list(&ast, &depth);
+    }
+
+    else if (t->type == LexerRightParen) {
+      list_pop(&depth);
+      insertion_list = get_insertion_list(&ast, &depth);
     }
   }
 
-  return expr;
+  return ast;
+}
+
+
+void free_cell(Cell *cell) {
+  free(cell->data);
+
+  cell->type = ParserVoid;
 }
 
 void print_ast(List *ast) {
@@ -73,9 +106,12 @@ void print_ast(List *ast) {
 
     if (cell->type == ParserString || cell->type == ParserSymbol) {
       ParserStringData *string = cell->data;
-      
+
       printf("%.*s ", string->len, string->start);
     }
+
+    if (cell->type == ParserInt)
+      printf("%" PRIu64 " ", *(uint64_t*)cell->data);
 
     if (cell->type == ParserSExpr) {
       print_ast(cell->data);

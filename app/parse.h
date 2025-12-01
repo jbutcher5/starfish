@@ -5,7 +5,9 @@
 typedef enum {
   ParserString,
   ParserSymbol,
-  ParserSExpr
+  ParserInt,
+  ParserSExpr,
+  ParserVoid
 } ParserType;
 
 typedef struct {
@@ -18,5 +20,6 @@ typedef struct {
   uint16_t len;
 } ParserStringData;
 
-List parse(List *tokens, uint16_t depth);
+List parse(List *tokens);
+void free_cell(Cell *cell);
 void print_ast(List *ast);

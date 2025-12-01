@@ -51,8 +51,8 @@ List *list_slice(List *list, uint32_t start, uint32_t end) {
   
   *result = list_new(list->type_size);
 
-  for (int i = start; i < start + end - 1; i++)
-    list_push(result, list_grab(list, i));
+  for (int i = 0; i < end - start; i++)
+    list_push(result, list_grab(list, start + i));
 
   return result;
 }

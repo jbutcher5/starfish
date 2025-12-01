@@ -6,6 +6,7 @@
 typedef enum {
   LexerAtom,
   LexerString,
+  LexerInt,
   LexerError,
   LexerLeftParen,
   LexerRightParen

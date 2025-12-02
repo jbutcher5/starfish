@@ -2,23 +2,22 @@
 #include <stdint.h>
 #include "util.h"
 
-typedef enum {
-  ParserString,
-  ParserSymbol,
-  ParserInt,
-  ParserSExpr,
-  ParserVoid
-} ParserType;
-
-typedef struct {
-  ParserType type;
-  void *data;
-} Cell;
-
 typedef struct {
   char *start;
   uint16_t len;
 } ParserStringData;
+
+typedef struct {
+  enum { ParserString, ParserSymbol, ParserInt, ParserSExpr, ParserVoid } tag;
+
+  union {
+    ParserStringData *ParserString;
+    ParserStringData *ParserSymbol;
+    uint64_t *ParserInt;
+    List *ParserSExpr;
+  } data;
+} Cell;
+
 
 List parse(List *tokens);
 void free_cell(Cell *cell);

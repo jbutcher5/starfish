@@ -20,12 +20,12 @@ List *get_insertion_list(List *ast, List *depth) {
     uint16_t *depth_i = list_grab(depth, j);
     Cell *sexpr = list_grab(insertion_list, *depth_i);
 	
-    if (sexpr->type != ParserSExpr) {
+    if (sexpr->tag != ParserSExpr) {
       puts("Expected to index an sexpr is not");
       exit(1);
     }
       
-    insertion_list = sexpr->data;
+    insertion_list = sexpr->data.ParserSExpr;
   }
 
   return insertion_list;
@@ -47,7 +47,7 @@ List parse(List *tokens) {
       ParserStringData *string = malloc(sizeof(ParserStringData));
       *string = (ParserStringData){.start = t->start, .len = t->len};
 
-      cell = (Cell){.type = ParserSymbol, .data = string};
+      cell = (Cell){.tag = ParserSymbol, {.ParserString = string}};
       list_push(insertion_list, &cell);
     }
 
@@ -55,7 +55,7 @@ List parse(List *tokens) {
       ParserStringData *string = malloc(sizeof(ParserStringData));
       *string = (ParserStringData){.start = t->start, .len = t->len};
 
-      cell = (Cell){.type = ParserString, .data = string};
+      cell = (Cell){.tag = ParserString, {.ParserString = string}};
       list_push(insertion_list, &cell);
     }
 
@@ -64,7 +64,7 @@ List parse(List *tokens) {
 
       atoi_n(i, t->start, t->len);
 
-      cell = (Cell){.type = ParserInt, .data = i};
+      cell = (Cell){.tag = ParserInt, {.ParserInt = i}};
       list_push(insertion_list, &cell);
     }
 
@@ -72,7 +72,7 @@ List parse(List *tokens) {
       List *list = malloc(sizeof(List));
       *list = list_new(sizeof(Cell));
 
-      cell = (Cell){.type = ParserSExpr, .data = list};
+      cell = (Cell){.tag = ParserSExpr, {.ParserSExpr=list}};
       list_push(insertion_list, &cell);
 
       uint32_t location = insertion_list->size - 1;
@@ -92,9 +92,9 @@ List parse(List *tokens) {
 
 
 void free_cell(Cell *cell) {
-  free(cell->data);
+  //free(cell->data);
 
-  cell->type = ParserVoid;
+  cell->tag = ParserVoid;
 }
 
 void print_ast(List *ast) {
@@ -104,17 +104,17 @@ void print_ast(List *ast) {
   
   for (uint16_t i = 1; cell; i++) {
 
-    if (cell->type == ParserString || cell->type == ParserSymbol) {
-      ParserStringData *string = cell->data;
+    if (cell->tag == ParserString || cell->tag == ParserSymbol) {
+      ParserStringData *string = cell->data.ParserString;
 
       printf("%.*s ", string->len, string->start);
     }
 
-    if (cell->type == ParserInt)
-      printf("%" PRIu64 " ", *(uint64_t*)cell->data);
+    if (cell->tag == ParserInt)
+      printf("%" PRIu64 " ", *(uint64_t*)cell->data.ParserInt);
 
-    if (cell->type == ParserSExpr) {
-      print_ast(cell->data);
+    if (cell->tag == ParserSExpr) {
+      print_ast(cell->data.ParserSExpr);
     }
     
     cell = list_grab(ast, i);

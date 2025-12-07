@@ -13,7 +13,7 @@ typedef struct {
   union {
     ParserStringData *ParserString;
     ParserStringData *ParserSymbol;
-    uint64_t *ParserInt;
+    uint64_t ParserInt;
     List *ParserSExpr;
   } data;
 } Cell;

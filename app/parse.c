@@ -60,9 +60,9 @@ List parse(List *tokens) {
     }
 
     else if (t->type == LexerInt) {
-      uint64_t *i = malloc(sizeof(uint64_t));
+      uint64_t i;
 
-      atoi_n(i, t->start, t->len);
+      atoi_n(&i, t->start, t->len);
 
       cell = (Cell){.tag = ParserInt, {.ParserInt = i}};
       list_push(insertion_list, &cell);
@@ -111,7 +111,7 @@ void print_ast(List *ast) {
     }
 
     if (cell->tag == ParserInt)
-      printf("%" PRIu64 " ", *(uint64_t*)cell->data.ParserInt);
+      printf("%" PRIu64 " ", cell->data.ParserInt);
 
     if (cell->tag == ParserSExpr) {
       print_ast(cell->data.ParserSExpr);

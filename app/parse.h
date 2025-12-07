@@ -11,8 +11,7 @@ typedef struct {
   enum { ParserString, ParserSymbol, ParserInt, ParserSExpr, ParserVoid } tag;
 
   union {
-    ParserStringData *ParserString;
-    ParserStringData *ParserSymbol;
+    ParserStringData ParserString;
     uint64_t ParserInt;
     List *ParserSExpr;
   } data;

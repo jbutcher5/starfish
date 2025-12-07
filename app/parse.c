@@ -44,16 +44,14 @@ List parse(List *tokens) {
     Token *t = (Token *)list_grab(tokens, i);
 
     if (t->type == LexerAtom) {
-      ParserStringData *string = malloc(sizeof(ParserStringData));
-      *string = (ParserStringData){.start = t->start, .len = t->len};
+      ParserStringData string = {.start = t->start, .len = t->len};
 
       cell = (Cell){.tag = ParserSymbol, {.ParserString = string}};
       list_push(insertion_list, &cell);
     }
 
     else if (t->type == LexerString) {
-      ParserStringData *string = malloc(sizeof(ParserStringData));
-      *string = (ParserStringData){.start = t->start, .len = t->len};
+      ParserStringData string = {.start = t->start, .len = t->len};
 
       cell = (Cell){.tag = ParserString, {.ParserString = string}};
       list_push(insertion_list, &cell);
@@ -105,9 +103,9 @@ void print_ast(List *ast) {
   for (uint16_t i = 1; cell; i++) {
 
     if (cell->tag == ParserString || cell->tag == ParserSymbol) {
-      ParserStringData *string = cell->data.ParserString;
+      ParserStringData string = cell->data.ParserString;
 
-      printf("%.*s ", string->len, string->start);
+      printf("%.*s ", string.len, string.start);
     }
 
     if (cell->tag == ParserInt)

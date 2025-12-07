@@ -19,5 +19,5 @@ typedef struct {
 
 
 List parse(List *tokens);
-void free_cell(Cell *cell);
+void free_ast(List *ast);
 void print_ast(List *ast);

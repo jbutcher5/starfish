@@ -85,14 +85,24 @@ List parse(List *tokens) {
     }
   }
 
+  list_free(&depth);
+  
   return ast;
 }
 
+void free_ast(List *ast) {
+  for (int i = 0; i < ast->size; i++) {
+    Cell *c = list_grab(ast, i);
 
-void free_cell(Cell *cell) {
-  //free(cell->data);
+    if (c->tag == ParserSExpr) {
+      free_ast(c->data.ParserSExpr);
+    }
 
-  cell->tag = ParserVoid;
+    c->tag = ParserVoid;
+  }
+
+  list_free(ast);
+  free(ast);
 }
 
 void print_ast(List *ast) {

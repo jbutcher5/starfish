@@ -2,6 +2,11 @@
 #include <stdint.h>
 
 typedef struct {
+  char *start;
+  uint16_t len;
+} String;
+
+typedef struct {
   void *buffer;
   uint8_t type_size;
   uint32_t size;

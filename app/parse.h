@@ -3,20 +3,14 @@
 #include "util.h"
 
 typedef struct {
-  char *start;
-  uint16_t len;
-} ParserStringData;
-
-typedef struct {
   enum { ParserString, ParserSymbol, ParserInt, ParserSExpr, ParserVoid } tag;
 
   union {
-    ParserStringData ParserString;
+    String ParserString;
     uint64_t ParserInt;
     List *ParserSExpr;
   } data;
 } Cell;
-
 
 List parse(List *tokens);
 void free_ast(List *ast);

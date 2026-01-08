@@ -47,9 +47,10 @@ uint8_t type_size(Type t) {
   return 0;
 }
 
-uint8_t strcmp_n(char *s1, char *s2, uint16_t n) {
+uint8_t strcmp_n(const char *s1, const char *s2, uint16_t n) {
   for (uint16_t i = 0; i < n; i++)
-    if (s1[i] != s2[i]) return 0;
+    if (!s1[i] || !s2[i] || s1[i] != s2[i])
+      return 0;
 
   return 1;
 }
@@ -69,20 +70,53 @@ AST ast_define(List *l) {
     exit(2);
 
   node.data.ASTVar.identifier = ident_s->data.ParserString;
-  node.data.ASTVar.type = create_type(t_s->data.ParserString); 
+  node.data.ASTVar.type = create_type(t_s->data.ParserString);
   node.data.ASTVar.node = cell_to_ast(ast_var);
+
+  return node;
 }
 
 AST (*sexpr_f[])(List *) = {ast_define};
 const char *sexpr_kw[] = {"define"};
 
-AST get_match(List *l) {
+AST *get_match(List *l) {
+  static AST result;
+
+  if (!l->size) {
+    result = (AST){ASTIntegral, .data = 0};
+    return &result;
+  }
+    
+  Cell *first_cell = list_grab(l, 0);
   
+  if (first_cell->tag != ParserSymbol) {
+    exit(2);
+  }
+  
+  String first_word = first_cell->data.ParserString;
+
+  for (int i = 0; i < sizeof(sexpr_kw) / sizeof(char *); i++) {
+    if (strcmp_n(first_word.start, sexpr_kw[i], first_word.len)) {
+      result = sexpr_f[i](l);
+      return &result;
+    }
+  }
+
+  return 0;
 }
 
-AST *cell_to_ast(Cell *cell) {
+AST cell_to_ast(Cell *cell) {
+  if (cell->tag == ParserSExpr) {
+    AST *result = get_match(cell->data.ParserSExpr);
+
+    if (!result) {
+      exit(2);
+    }
+    
+    return *result;
+  }
 }
 
 List ast_to_ir(List *ast) {
-  return list_new(1);
+  return list_new(sizeof(AST));
 }

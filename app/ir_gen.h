@@ -20,7 +20,7 @@ typedef struct Type {
 
 Type *create_type(String str);
 uint8_t type_size(Type t);
-uint8_t strcmp_n(char *s1, char *s2, uint16_t n);
+uint8_t strcmp_n(const char *s1, const char *s2, uint16_t n);
 
 typedef struct AST {
   enum {
@@ -56,5 +56,5 @@ typedef struct AST {
   } data;
 } AST;
 
-AST *cell_to_ast(Cell *cell);
+AST cell_to_ast(Cell *cell);
 List parser_to_ast(List *ast);

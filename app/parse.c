@@ -7,10 +7,12 @@
 #include <inttypes.h>
 
 void atoi_n(uint64_t *result, char *str, uint16_t length) {
-  *result = 0;
-
-  for (int i = 0; i < length; i++)
-    *result += (str[i] - 48) * (i + 1);
+  *result = (str[0] - 48);
+  
+  for (int i = 1; i < length; i++) {
+    *result *= 10;
+    *result += (str[i] - 48);
+  }
 }
 
 List *get_insertion_list(List *ast, List *depth) {
@@ -44,14 +46,14 @@ List parse(List *tokens) {
     Token *t = (Token *)list_grab(tokens, i);
 
     if (t->type == LexerAtom) {
-      ParserStringData string = {.start = t->start, .len = t->len};
+      String string = {.start = t->start, .len = t->len};
 
       cell = (Cell){.tag = ParserSymbol, {.ParserString = string}};
       list_push(insertion_list, &cell);
     }
 
     else if (t->type == LexerString) {
-      ParserStringData string = {.start = t->start, .len = t->len};
+      String string = {.start = t->start, .len = t->len};
 
       cell = (Cell){.tag = ParserString, {.ParserString = string}};
       list_push(insertion_list, &cell);
@@ -113,7 +115,7 @@ void print_ast(List *ast) {
   for (uint16_t i = 1; cell; i++) {
 
     if (cell->tag == ParserString || cell->tag == ParserSymbol) {
-      ParserStringData string = cell->data.ParserString;
+      String string = cell->data.ParserString;
 
       printf("%.*s ", string.len, string.start);
     }

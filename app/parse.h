@@ -4,7 +4,7 @@
 
 typedef struct {
   enum { ParserString, ParserSymbol, ParserInt, ParserSExpr, ParserVoid } tag;
-
+  
   union {
     String ParserString;
     uint64_t ParserInt;

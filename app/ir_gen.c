@@ -1,5 +1,6 @@
 #include "ir_gen.h"
 #include "parse.h"
+#include "util.h"
 
 Type *create_type(String str) {
   if (str.len < 3) {
@@ -55,12 +56,12 @@ uint8_t strcmp_n(const char *s1, const char *s2, uint16_t n) {
   return 1;
 }
 
-AST ast_define(List *l) {
+IR ir_define(List *l) {
   if (l->size != 4)
     exit(2);
 
-  AST node;
-  node.tag = ASTVar;
+  IR node;
+  node.tag = IRVar;
 
   Cell *t_s = list_grab(l, 1);
   Cell *ident_s = list_grab(l, 2);
@@ -69,22 +70,21 @@ AST ast_define(List *l) {
   if (t_s->tag != ParserSymbol || ident_s->tag != ParserSymbol)
     exit(2);
 
-  node.data.ASTVar.identifier = ident_s->data.ParserString;
-  node.data.ASTVar.type = create_type(t_s->data.ParserString);
-  node.data.ASTVar.node = cell_to_ast(ast_var);
+  node.data.IRVar.identifier = ident_s->data.ParserString;
+  node.data.IRVar.type = create_type(t_s->data.ParserString);
+  node.data.IRVar.node = cell_to_ir(ast_var);
 
   return node;
 }
 
-AST (*sexpr_f[])(List *) = {ast_define};
+IR (*sexpr_f[])(List *) = {ir_define};
 const char *sexpr_kw[] = {"define"};
 
-AST *get_match(List *l) {
-  static AST result;
+IR *get_match(List *l) {
+  static IR result;
 
   if (!l->size) {
-    result = (AST){ASTIntegral, .data = 0};
-    return &result;
+    return 0;
   }
     
   Cell *first_cell = list_grab(l, 0);
@@ -104,19 +104,50 @@ AST *get_match(List *l) {
 
   return 0;
 }
-
-AST cell_to_ast(Cell *cell) {
+IR* cell_to_ir(Cell *cell) {
+  IR node;
+  
   if (cell->tag == ParserSExpr) {
-    AST *result = get_match(cell->data.ParserSExpr);
+    IR *s_expr_match = get_match(cell->data.ParserSExpr);
 
-    if (!result) {
-      exit(2);
-    }
+    if (!s_expr_match)
+      puts("SExpr has no match");
     
-    return *result;
+    node = *s_expr_match;
   }
+
+  else if (cell->tag == ParserInt) {
+    node.tag = IRInt;
+    node.data.IRInt = cell->data.ParserInt;
+  }
+
+  else if (cell->tag == ParserString) {
+    node.tag = IRString;
+    node.data.IRString = cell->data.ParserString;
+  }
+
+  else if (cell->tag == ParserSymbol) {
+    node.tag = IRVarRef;
+    node.data.IRVarRef = cell->data.ParserString;
+  }
+
+  else if (cell->tag == ParserVoid) {
+    exit(3);
+  }
+
+  IR *result = (IR *)malloc(sizeof(IR));
+
+  *result = node;
+  
+  return result;
 }
 
 List ast_to_ir(List *ast) {
-  return list_new(sizeof(AST));
+  List result = list_new(sizeof(IR));
+
+  for (int i = 0; i < ast->size; i++) {
+    list_push(&result, cell_to_ir(list_grab(ast, i)));
+  }
+
+  return result;
 }

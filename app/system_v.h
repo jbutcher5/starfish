@@ -1,71 +1,83 @@
+#pragma once
 #include <stdint.h>
+#include "ir_gen.h"
+#include "util.h"
+
+typedef struct {
+  HashMap offsets;
+  uint16_t current_offsets;
+  List sysv_code;
+} Enviroment;
 
 typedef struct {
   enum {
-    LoadMemory,
-    StringLiteral,
-    LoadRef,
-    GetVarRef,
-    LoadVarRef,
-    LoadVar,
-    Var,
-    Enter,
-    Leave,
-    MovReg,
-    AsmCall,
-    AsmInline
+    SysVLoadMemory,
+    SysVStringLiteral,
+    SysVLoadRef,
+    SysVGetVarRef,
+    SysVLoadVarRef,
+    SysVLoadVar,
+    SysVVar,
+    SysVEnter,
+    SysVLeave,
+    SysVMovReg,
+    SysVAsmCall,
+    SysVAsmInline
   } tag;
 
   union {
-    struct LoadMemory {
+    struct SysVLoadMemory {
       uint16_t size;
       uint16_t offset;
-    } LoadMemory;
+    } SysVLoadMemory;
 
-    struct StringLiteral {
-      char *string; // Non-zero terminated
+    struct SysVStringLiteral {
+      String string; // Non-zero terminated
       uint16_t size;
-    } StringLiteral;
+    } SysVStringLiteral;
 
-    struct LoadRef {
-      char *identifier;
-    } LoadRef;
+    struct SysVLoadRef {
+      String identifier;
+    } SysVLoadRef;
 
-    struct GetVarRef {
-      char *identifier;
-    } GetVarRef;
+    struct SysVGetVarRef {
+      String identifier;
+    } SysVGetVarRef;
 
-    struct LoadVarRef {
+    struct SysVLoadVarRef {
       uint16_t size;
       uint16_t offset;
-    } LoadVarRef;
+    } SysVLoadVarRef;
 
-    struct LoadVar {
-      char *identifier;
-    } LoadVar;
+    struct SysVLoadVar {
+      String identifier;
+    } SysVLoadVar;
 
-    struct Var {
-      char *identifier;
+    struct SysVVar {
+      String identifier;
       uint16_t offset;
       uint16_t size;
-    } Var;
+    } SysVVar;
 
-    struct Enter {
-      char *label;
+    struct SysVEnter {
+      String label;
       uint16_t reserved_bytes;
-    } Enter;
+    } SysVEnter;
 
-    struct MovReg {
+    struct SysVMovReg {
       char *from;
       char *to;
-    } MovReg;
+    } SysVMovReg;
 
-    struct AsmCall {
+    struct SysVAsmCall {
       char *identifier;
-    } AsmCall;
+    } SysVAsmCall;
 
-    struct AsmInline {
+    struct SysVAsmInline {
       char *as;
-    } AsmInline;
+    } SysVAsmInline;
   } data;
 } SysV;
+
+void append_sysv(Enviroment *env, IR ir);
+List ir_to_sysv(List *ir);

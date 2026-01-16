@@ -22,39 +22,45 @@ Type *create_type(String str);
 uint8_t type_size(Type t);
 uint8_t strcmp_n(const char *s1, const char *s2, uint16_t n);
 
-typedef struct AST {
+typedef struct IR {
   enum {
-    ASTExtern,
-    ASTFunc,
-    ASTCCall,
-    ASTVar,
-    ASTCall,
-    ASTVarRef,
-    ASTRef,
-    ASTInline,
-    ASTDeref,
-    ASTIntegral,
-    ASTStr,
-    ASTIf
+    IRExtern,
+    IRFunc,
+    IRCCall,
+    IRVar,
+    IRCall,
+    IRVarRef,
+    IRRef,
+    IRInline,
+    IRDeref,
+    IRInt,
+    IRString,
+    IRIf
   } tag;
 
   union {
-    List ASTExtern; // List of extern functions
+    List IRExtern; // List of extern functions
 
-    struct ASTFunc {
+    struct IRFunc {
       Type ret_type;
       List param_types; // List of Type
       String identifier;
-      List body; // List of AST
-    } ASTFunc;
+      List body; // List of IR
+    } IRFunc;
 
-    struct ASTVar {
+    struct IRVar {
       String identifier;
       Type *type;
-      struct AST *node;
-    } ASTVar;
-  } data;
-} AST;
+      struct IR *node;
+    } IRVar;
 
-AST cell_to_ast(Cell *cell);
-List parser_to_ast(List *ast);
+    String IRVarRef;
+
+    uint64_t IRInt;
+    String IRString;
+    
+  } data;
+} IR;
+
+IR* cell_to_ir(Cell *cell);
+List ast_to_ir(List *ast);

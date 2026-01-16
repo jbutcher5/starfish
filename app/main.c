@@ -1,3 +1,4 @@
+#include "ir_gen.h"
 #include "lex.h"
 #include "parse.h"
 #include "util.h"
@@ -19,22 +20,22 @@ int main(int argc, char *argv[]) {
   ch = 0;
   list_push(&characters, &ch);
   
-  List tokens = Lex(characters.buffer);
+  List tokenlist = Lex(characters.buffer);
 
-  Token *token = (Token*)list_grab(&tokens, 0);
+  Token *token = (Token*)list_grab(&tokenlist, 0);
 
   puts("Token Analysis:");
   
   for (int i = 0; token; i++) {
     printf("Token %d: %.*s %d\n", i, token->len, token->start, token->type);
     
-    token = (Token*)list_grab(&tokens, i + 1);
+    token = (Token*)list_grab(&tokenlist, i + 1);
   }
 
   List *ast = (List*)malloc(sizeof(List));
-  *ast = parse(&tokens);
+  *ast = parse(&tokenlist);
 
-  list_free(&tokens);
+  list_free(&tokenlist);
   
   puts("\nParser Analysis:");
 
@@ -42,7 +43,8 @@ int main(int argc, char *argv[]) {
 
   puts("");
 
-  list_free(&tokens);
+  List ir = ast_to_ir(ast);
+  
   list_free(&characters);
   free_ast(ast);
 

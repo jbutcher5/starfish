@@ -7,7 +7,7 @@ typedef struct {
   HashMap offsets;
   uint16_t current_offsets;
   List sysv_code;
-} Enviroment;
+} Environment;
 
 typedef struct {
   enum {
@@ -79,5 +79,5 @@ typedef struct {
   } data;
 } SysV;
 
-void append_sysv(Enviroment *env, IR ir);
+void append_sysv(Environment *env, IR ir);
 List ir_to_sysv(List *ir);

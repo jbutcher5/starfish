@@ -18,6 +18,11 @@ typedef struct Type {
     } detail;
 } Type;
 
+typedef struct TypedIdent {
+    String ident;
+    Type *type;
+} TypedIdent;
+
 Type *create_type(String str);
 uint8_t type_size(Type t);
 uint8_t strcmp_n(const char *s1, const char *s2, uint16_t n);
@@ -42,8 +47,8 @@ typedef struct IR {
     List IRExtern; // List of extern functions
 
     struct IRFunc {
-      Type ret_type;
-      List param_types; // List of Type
+      Type *ret_type;
+      List param_types; // List of TypedIdent
       String identifier;
       List body; // List of IR
     } IRFunc;

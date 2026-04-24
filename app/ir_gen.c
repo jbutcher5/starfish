@@ -89,7 +89,7 @@ IR ir_defun(List *l) {
   if (name->tag != ParserSymbol || ret_type->tag != ParserSymbol || args->tag != ParserSExpr)
     exit(2);
 
-  List *body = list_slice(l, 3, l->size - 1);
+  List *body = list_slice(l, 4, l->size - 1);
   node.data.IRFunc.body = ast_to_ir(body);
   list_free(body);
 
@@ -115,12 +115,13 @@ IR ir_defun(List *l) {
     list_push(&param_types, &param);
   }
 
+  node.data.IRFunc.param_types = param_types;
 
-
+  return node;
 }
 
-IR (*sexpr_f[])(List *) = {ir_define};
-const char *sexpr_kw[] = {"define"};
+IR (*sexpr_f[])(List *) = {ir_define, ir_defun};
+const char *sexpr_kw[] = {"define", "fn"};
 
 IR *get_match(List *l) {
   static IR result;
@@ -147,15 +148,17 @@ IR *get_match(List *l) {
   return 0;
 }
 
-IR* cell_to_ir(Cell *cell) {
+IR *cell_to_ir(Cell *cell) {
   IR node;
   
   if (cell->tag == ParserSExpr) {
     IR *s_expr_match = get_match(cell->data.ParserSExpr);
 
-    if (!s_expr_match)
+    if (!s_expr_match) {
       puts("SExpr has no match");
-    
+      exit(2);
+    }
+
     node = *s_expr_match;
   }
 
@@ -189,7 +192,8 @@ List ast_to_ir(List *ast) {
   List result = list_new(sizeof(IR));
 
   for (int i = 0; i < ast->size; i++) {
-    list_push(&result, cell_to_ir(list_grab(ast, i)));
+    IR *ir = cell_to_ir(list_grab(ast, i));
+    list_push(&result, ir);
   }
 
   return result;

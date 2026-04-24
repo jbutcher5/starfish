@@ -34,6 +34,7 @@ uint8_t HM_Remove(HashMap *map, uint32_t key);
 void HM_Free(HashMap *map);
 
 String to_string(char *str);
+uint8_t to_str(String string, char *dest, uint16_t limit);
 List list_new(uint8_t type_size);
 uint8_t list_push(List *list, void *data);
 void *list_grab(List *list, uint32_t n);

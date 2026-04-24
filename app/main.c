@@ -6,7 +6,9 @@
 #include <stdlib.h>
 
 int main(int argc, char *argv[]) {
-  FILE *file = fopen(argv[1], "r");
+  char *tmp = "test2.star";
+  FILE *file = fopen(tmp, "r");
+  //FILE *file = fopen(argv[1], "r");
   List characters = list_new(sizeof(char));
 
   char ch;
@@ -45,8 +47,23 @@ int main(int argc, char *argv[]) {
 
   List ir = ast_to_ir(ast);
   
+
+  char name[128];
+
+  IR *x = ir.buffer;
+
+  printf("%d\n", ast->size);
+
+  if (x && x->tag == IRFunc) {
+    to_str(x->data.IRFunc.identifier, name, 128);
+    printf("%s", name);
+  } else if (x && x->tag == IRVar) {
+    puts("Arrrrr");
+  }
+
   list_free(&characters);
   free_ast(ast);
+
 
   return 0;
 }

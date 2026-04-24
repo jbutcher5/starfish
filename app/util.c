@@ -13,6 +13,23 @@ String to_string(char *str) {
   return (String){str, i};
 }
 
+uint8_t to_str(String string, char *dest, uint16_t limit) {
+  int i = 0;
+  for (; i < string.len; i++) {
+    if (i >= limit)
+      return 1;
+
+    dest[i] = string.start[i];
+  }
+
+  if (i+1 >= limit)
+    return 1;
+
+  dest[i+1] = 0;
+
+  return 0;
+}
+
 List list_new(uint8_t type_size) {
   void *buffer = malloc(type_size * ARRAY_INITIAL);
 

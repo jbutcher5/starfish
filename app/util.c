@@ -22,10 +22,10 @@ uint8_t to_str(String string, char *dest, uint16_t limit) {
     dest[i] = string.start[i];
   }
 
-  if (i+1 >= limit)
+  if (i >= limit)
     return 1;
 
-  dest[i+1] = 0;
+  dest[i] = 0;
 
   return 0;
 }

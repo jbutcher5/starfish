@@ -20,14 +20,14 @@ Type *create_type(String str) {
 
   else if (strcmp_n(str.start, "Int", 3)) {
     result->tag = TYPETAG_PRIMITIVE;
-    result->detail.primitive = PRIMITIVE_CHAR;
+    result->detail.primitive = PRIMITIVE_INTEGRAL;
 
     return result;
   }
 
   else if (strcmp_n(str.start, "Char", 4)) {
     result->tag = TYPETAG_PRIMITIVE;
-    result->detail.primitive = PRIMITIVE_INTEGRAL;
+    result->detail.primitive = PRIMITIVE_CHAR;
 
     return result;
   }
@@ -89,7 +89,7 @@ IR ir_defun(List *l) {
   if (name->tag != ParserSymbol || ret_type->tag != ParserSymbol || args->tag != ParserSExpr)
     exit(2);
 
-  List *body = list_slice(l, 4, l->size - 1);
+  List *body = list_slice(l, 4, l->size);
   node.data.IRFunc.body = ast_to_ir(body);
   list_free(body);
 

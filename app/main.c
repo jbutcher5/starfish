@@ -1,6 +1,7 @@
 #include "ir_gen.h"
 #include "lex.h"
 #include "parse.h"
+#include "system_v.h"
 #include "util.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +27,7 @@ int main(int argc, char *argv[]) {
 
   Token *token = (Token*)list_grab(&tokenlist, 0);
 
+  /*
   puts("Token Analysis:");
   
   for (int i = 0; token; i++) {
@@ -33,33 +35,21 @@ int main(int argc, char *argv[]) {
     
     token = (Token*)list_grab(&tokenlist, i + 1);
   }
+  */
 
   List *ast = (List*)malloc(sizeof(List));
   *ast = parse(&tokenlist);
 
   list_free(&tokenlist);
   
-  puts("\nParser Analysis:");
+  //puts("\nParser Analysis:");
 
-  print_ast(ast);
-
-  puts("");
+  //print_ast(ast);
 
   List ir = ast_to_ir(ast);
-  
 
-  char name[128];
-
-  IR *x = ir.buffer;
-
-  printf("%d\n", ast->size);
-
-  if (x && x->tag == IRFunc) {
-    to_str(x->data.IRFunc.identifier, name, 128);
-    printf("%s", name);
-  } else if (x && x->tag == IRVar) {
-    puts("Arrrrr");
-  }
+  List sysv = ir_to_sysv(&ir);
+  output_sysv(sysv);
 
   list_free(&characters);
   free_ast(ast);

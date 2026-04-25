@@ -10,9 +10,15 @@ typedef struct {
 } Environment;
 
 typedef struct {
+  uint16_t offset;
+  uint16_t size;
+} SizedOffset;
+
+typedef struct {
   enum {
     SysVLoadMemory,
     SysVStringLiteral,
+    SysVImmediate,
     SysVLoadRef,
     SysVGetVarRef,
     SysVLoadVarRef,
@@ -26,15 +32,14 @@ typedef struct {
   } tag;
 
   union {
-    struct SysVLoadMemory {
-      uint16_t size;
-      uint16_t offset;
-    } SysVLoadMemory;
+    SizedOffset SysVLoadMemory;
 
     struct SysVStringLiteral {
       String string; // Non-zero terminated
       uint16_t size;
     } SysVStringLiteral;
+
+    uint64_t SysVImmediate;
 
     struct SysVLoadRef {
       String identifier;
@@ -44,10 +49,7 @@ typedef struct {
       String identifier;
     } SysVGetVarRef;
 
-    struct SysVLoadVarRef {
-      uint16_t size;
-      uint16_t offset;
-    } SysVLoadVarRef;
+    SizedOffset SysVLoadVarRef;
 
     struct SysVLoadVar {
       String identifier;
@@ -80,4 +82,6 @@ typedef struct {
 } SysV;
 
 void append_sysv(Environment *env, IR ir);
+void _ir_to_sysv_env(List *ir, Environment *env);
 List ir_to_sysv(List *ir);
+void output_sysv(List sysv);

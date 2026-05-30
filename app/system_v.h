@@ -81,6 +81,20 @@ typedef struct {
   } data;
 } SysV;
 
+typedef struct {
+  enum {
+    AX,
+    BX,
+    CX,
+    DX,
+    BP
+  } tag;
+
+  uint16_t size;
+  uint16_t offset;
+} Register;
+
+void show_reg(Register reg);
 void append_sysv(Environment *env, IR ir);
 void _ir_to_sysv_env(List *ir, Environment *env);
 List ir_to_sysv(List *ir);

@@ -1,6 +1,7 @@
 #include "system_v.h"
 #include "ir_gen.h"
 #include "util.h"
+#include <stdint.h>
 
 uint32_t djb2_hash(String str) {
   uint32_t hash = 5381;
@@ -9,6 +10,68 @@ uint32_t djb2_hash(String str) {
     hash = 33 * hash + str.start[i];
 
   return hash;
+}
+
+void show_reg(Register reg) {
+  if (reg.tag == AX) {
+    if (reg.size == 8) {
+      printf("rax"); 
+    }
+
+    else if (reg.size == 4) {
+      printf("eax"); 
+    }
+
+    else if (reg.size == 2 || reg.size == 1) {
+      printf("ax"); 
+    }
+  }
+
+  else if (reg.tag == BX) {
+    if (reg.size == 8) {
+      printf("rbx"); 
+    }
+
+    else if (reg.size == 4) {
+      printf( "ebx"); 
+    }
+
+    else if (reg.size == 2 || reg.size == 1) {
+      printf("bx"); 
+    }
+  }
+
+  else if (reg.tag == CX) {
+    if (reg.size == 8) {
+      printf("rcx"); 
+    }
+
+    else if (reg.size == 4) {
+      printf("ecx"); 
+    }
+
+    else if (reg.size == 2 || reg.size == 1) {
+      printf("cx"); 
+    }
+  }
+
+  else if (reg.tag == DX) {
+    if (reg.size == 8) {
+      printf("rdx"); 
+    }
+
+    else if (reg.size == 4) {
+      printf("edx"); 
+    }
+
+    else if (reg.size == 2 || reg.size == 1) {
+      printf("dx"); 
+    }
+  }
+
+  if (reg.tag == BP) {
+    printf("[rbp-%d]", reg.offset);
+  }
 }
 
 void append_sysv(Environment *env, IR ir) {
@@ -98,7 +161,11 @@ void output_sysv(List sysv) {
     SysV *instruction = list_grab(&sysv, i);
 
     if (instruction->tag == SysVVar) {
-      printf("\n\tmov [rbp-%d], rax", instruction->data.SysVVar.offset);
+      uint16_t offset = instruction->data.SysVVar.offset;
+      uint16_t size = instruction->data.SysVVar.size;
+
+      printf("\n\tmov [rbp-%d], ", offset);
+      show_reg((Register){.tag = AX, .size = size});
     }
 
     else if (instruction->tag == SysVLoadVarRef) {

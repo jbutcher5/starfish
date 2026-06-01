@@ -59,6 +59,12 @@ typedef struct IR {
       struct IR *node;
     } IRVar;
 
+    struct IRIf {
+      struct IR *condition;
+      struct IR *a;
+      struct IR *b;
+    } IRIf;
+
     String IRVarRef;
 
     uint64_t IRInt;

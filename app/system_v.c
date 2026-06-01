@@ -22,8 +22,12 @@ void show_reg(Register reg) {
       printf("eax"); 
     }
 
-    else if (reg.size == 2 || reg.size == 1) {
+    else if (reg.size == 2) {
       printf("ax"); 
+    }
+
+    else if (reg.size == 1) {
+      printf("al");
     }
   }
 
@@ -36,8 +40,12 @@ void show_reg(Register reg) {
       printf( "ebx"); 
     }
 
-    else if (reg.size == 2 || reg.size == 1) {
+    else if (reg.size == 2) {
       printf("bx"); 
+    }
+
+    else if (reg.size == 1) {
+      printf("bl");
     }
   }
 
@@ -50,8 +58,12 @@ void show_reg(Register reg) {
       printf("ecx"); 
     }
 
-    else if (reg.size == 2 || reg.size == 1) {
+    else if (reg.size == 2) {
       printf("cx"); 
+    }
+
+    else if (reg.size == 1) {
+      printf("cl");
     }
   }
 
@@ -64,8 +76,12 @@ void show_reg(Register reg) {
       printf("edx"); 
     }
 
-    else if (reg.size == 2 || reg.size == 1) {
+    else if (reg.size == 2) {
       printf("dx"); 
+    }
+
+    else if (reg.size == 1) {
+      printf("dl");
     }
   }
 
@@ -114,6 +130,27 @@ void append_sysv(Environment *env, IR ir) {
     list_push(&env->sysv_code, (void *)&leave);
   }
 
+  else if (ir.tag == IRIf) {
+    SysV if1, if2, if3;
+
+    if1.tag = SysVIfBody1;
+    if2.tag = SysVIfBody2;
+    if3.tag = SysVIfBody3;
+
+    if1.data.SysVIfBody1 = env->if_index;
+    if2.data.SysVIfBody2 = env->if_index;
+    if3.data.SysVIfBody3 = env->if_index;
+
+    env->if_index += 2;
+
+    append_sysv(env, *ir.data.IRIf.condition);
+    list_push(&env->sysv_code, (void*)&if1);
+    append_sysv(env, *ir.data.IRIf.a);
+    list_push(&env->sysv_code, (void*)&if2);
+    append_sysv(env, *ir.data.IRIf.b);
+    list_push(&env->sysv_code, (void*)&if3);
+  }
+
   else if (ir.tag == IRVarRef) {
     uint32_t hash = djb2_hash(ir.data.IRVarRef);
 
@@ -144,7 +181,8 @@ List ir_to_sysv(List *ir) {
   Environment env = {
     HM_Create(64),
     0,
-    list_new(sizeof(SysV))
+    list_new(sizeof(SysV)),
+    0
   };
 
   _ir_to_sysv_env(ir, &env);
@@ -185,6 +223,20 @@ void output_sysv(List sysv) {
 
     else if (instruction->tag == SysVLeave) {
       printf("\n\tmov rsp, rbp\n\tpop rbp\n\tret");
+    }
+
+    else if (instruction->tag == SysVIfBody1) {
+      printf("\n\tcmp rax, 0");
+      printf("\n\tje I%d", instruction->data.SysVIfBody1);
+    }
+
+    else if (instruction->tag == SysVIfBody2) {
+      printf("\n\tjmp I%d", instruction->data.SysVIfBody2 + 1);
+      printf("\nI%d:", instruction->data.SysVIfBody2);
+    }
+
+    else if (instruction->tag == SysVIfBody3) {
+      printf("\nI%d:", instruction->data.SysVIfBody3 + 1);
     }
   }
 }

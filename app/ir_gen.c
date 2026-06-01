@@ -2,6 +2,7 @@
 #include "parse.h"
 #include "util.h"
 #include <asm-generic/errno.h>
+#include <stdio.h>
 
 Type *create_type(String str) {
   if (str.len < 3) {
@@ -120,8 +121,23 @@ IR ir_defun(List *l) {
   return node;
 }
 
-IR (*sexpr_f[])(List *) = {ir_define, ir_defun};
-const char *sexpr_kw[] = {"define", "fn"};
+IR ir_if(List *l) {
+  IR node;
+  node.tag = IRIf;
+
+  Cell *condition = list_grab(l, 1);
+  Cell *a = list_grab(l, 2);
+  Cell *b = list_grab(l, 3);
+
+  node.data.IRIf.condition = cell_to_ir(condition);
+  node.data.IRIf.a = cell_to_ir(a);
+  node.data.IRIf.b = cell_to_ir(b);
+
+  return node;
+}
+
+IR (*sexpr_f[])(List *) = {ir_define, ir_defun, ir_if};
+const char *sexpr_kw[] = {"define", "fn", "if"};
 
 IR *get_match(List *l) {
   static IR result;

@@ -7,6 +7,7 @@ typedef struct {
   HashMap offsets;
   uint16_t current_offsets;
   List sysv_code;
+  uint64_t if_index;
 } Environment;
 
 typedef struct {
@@ -26,6 +27,9 @@ typedef struct {
     SysVVar,
     SysVEnter,
     SysVLeave,
+    SysVIfBody1,
+    SysVIfBody2,
+    SysVIfBody3,
     SysVMovReg,
     SysVAsmCall,
     SysVAsmInline
@@ -65,6 +69,10 @@ typedef struct {
       String label;
       uint16_t reserved_bytes;
     } SysVEnter;
+
+    uint64_t SysVIfBody1;
+    uint64_t SysVIfBody2;
+    uint64_t SysVIfBody3;
 
     struct SysVMovReg {
       char *from;

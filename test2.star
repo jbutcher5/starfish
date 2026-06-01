@@ -1,3 +1,5 @@
 (fn main Int ()
-    (define Int k 5)
-    k)
+    (define Char a 5)
+    (define Char b 0)
+    (if a 2 9)
+    )

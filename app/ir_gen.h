@@ -7,6 +7,12 @@
 
 // Reference: https://keleshev.com/abstract-syntax-tree-an-example-in-c/
 
+typedef struct {
+  List ir_nodes;
+  List types;
+  List lists;
+} IRAlloc;
+
 enum TypeTag { TYPETAG_PRIMITIVE, TYPETAG_POINTER };
 enum Primitive { PRIMITIVE_VOID, PRIMITIVE_INTEGRAL, PRIMITIVE_CHAR };
 
@@ -14,16 +20,16 @@ typedef struct Type {
     enum TypeTag tag;
     union {
         enum Primitive primitive;
-        struct Type *deref;
+        uint32_t deref;
     } detail;
 } Type;
 
 typedef struct TypedIdent {
     String ident;
-    Type *type;
+    uint32_t type;
 } TypedIdent;
 
-Type *create_type(String str);
+Type create_type(String str);
 uint8_t type_size(Type t);
 uint8_t strcmp_n(const char *s1, const char *s2, uint16_t n);
 
@@ -44,25 +50,23 @@ typedef struct IR {
   } tag;
 
   union {
-    List IRExtern; // List of extern functions
-
     struct IRFunc {
-      Type *ret_type;
-      List param_types; // List of TypedIdent
+      uint32_t ret_type;
+      uint32_t param_types; // List of TypedIdent
       String identifier;
-      List body; // List of IR
+      uint32_t body; // List of IR
     } IRFunc;
 
     struct IRVar {
       String identifier;
-      Type *type;
-      struct IR *node;
+      uint32_t type;
+      uint32_t node;
     } IRVar;
 
     struct IRIf {
-      struct IR *condition;
-      struct IR *a;
-      struct IR *b;
+      uint32_t condition;
+      uint32_t a;
+      uint32_t b;
     } IRIf;
 
     String IRVarRef;

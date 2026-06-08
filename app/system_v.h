@@ -4,6 +4,10 @@
 #include "util.h"
 
 typedef struct {
+  List offets;
+} SysVAlloc;
+
+typedef struct {
   HashMap offsets;
   uint16_t current_offsets;
   List sysv_code;

@@ -19,8 +19,8 @@ List *get_insertion_list(List *ast, List *depth) {
   List *insertion_list = ast;
 
   for (uint32_t j = 0; j < depth->size; j++) {
-    uint16_t *depth_i = list_grab(depth, j);
-    Cell *sexpr = list_grab(insertion_list, *depth_i);
+    uint16_t *depth_i = list_get(depth, j);
+    Cell *sexpr = list_get(insertion_list, *depth_i);
 	
     if (sexpr->tag != ParserSExpr) {
       puts("Expected to index an sexpr is not");
@@ -43,7 +43,7 @@ List parse(List *tokens) {
 
   for (uint32_t i = 0; i < tokens->size; i++) {
     
-    Token *t = (Token *)list_grab(tokens, i);
+    Token *t = (Token *)list_get(tokens, i);
 
     if (t->type == LexerAtom) {
       String string = {.start = t->start, .len = t->len};
@@ -94,7 +94,7 @@ List parse(List *tokens) {
 
 void free_ast(List *ast) {
   for (int i = 0; i < ast->size; i++) {
-    Cell *c = list_grab(ast, i);
+    Cell *c = list_get(ast, i);
 
     if (c->tag == ParserSExpr) {
       free_ast(c->data.ParserSExpr);
@@ -108,7 +108,7 @@ void free_ast(List *ast) {
 }
 
 void print_ast(List *ast) {
-  Cell *cell = list_grab(ast, 0);
+  Cell *cell = list_get(ast, 0);
 
   printf("( ");
   
@@ -127,7 +127,7 @@ void print_ast(List *ast) {
       print_ast(cell->data.ParserSExpr);
     }
     
-    cell = list_grab(ast, i);
+    cell = list_get(ast, i);
   }
 
   printf(") ");

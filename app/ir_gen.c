@@ -2,39 +2,39 @@
 #include "parse.h"
 #include "util.h"
 #include <asm-generic/errno.h>
-#include <stdio.h>
+#include <stdlib.h>
 
-Type *create_type(String str) {
+extern IRAlloc ir_alloc;
+
+Type create_type(String str) {
   if (str.len < 3) {
-    puts("Invalid type");
     exit(2);
-    return 0;
   }
 
-  Type *result = (Type *)malloc(sizeof(Type));
+  Type result;
   
   if (str.start[0] == '*') {
-    result->tag = TYPETAG_POINTER;
-    result->detail.deref = create_type((String){str.start + 1, str.len - 1});
-    return result;
+    result.tag = TYPETAG_POINTER;
+    
+    Type deref = create_type((String){str.start + 1, str.len - 1});
+    result.detail.deref = list_push(&ir_alloc.types, (void *)&deref);
   }
 
   else if (strcmp_n(str.start, "Int", 3)) {
-    result->tag = TYPETAG_PRIMITIVE;
-    result->detail.primitive = PRIMITIVE_INTEGRAL;
-
-    return result;
+    result.tag = TYPETAG_PRIMITIVE;
+    result.detail.primitive = PRIMITIVE_INTEGRAL;
   }
 
   else if (strcmp_n(str.start, "Char", 4)) {
-    result->tag = TYPETAG_PRIMITIVE;
-    result->detail.primitive = PRIMITIVE_CHAR;
-
-    return result;
+    result.tag = TYPETAG_PRIMITIVE;
+    result.detail.primitive = PRIMITIVE_CHAR;
   }
 
-  free(result);
-  return 0;
+  else {
+    exit(2);
+  }
+
+  return result;
 }
 
 uint8_t type_size(Type t) {
@@ -62,9 +62,9 @@ IR ir_define(List *l) {
   if (l->size != 4)
     exit(2);
 
-  Cell *t_s = list_grab(l, 1);
-  Cell *ident_s = list_grab(l, 2);
-  Cell *ast_var = list_grab(l, 3);
+  Cell *t_s = list_get(l, 1);
+  Cell *ident_s = list_get(l, 2);
+  Cell *ast_var = list_get(l, 3);
 
   if (t_s->tag != ParserSymbol || ident_s->tag != ParserSymbol)
     exit(2);
@@ -72,9 +72,15 @@ IR ir_define(List *l) {
   IR node;
   node.tag = IRVar;
 
+  Type type = create_type(t_s->data.ParserString);
+  uint32_t type_handle = list_push(&ir_alloc.types, (void*)&type);
+  
+  IR *rhs = cell_to_ir(ast_var);
+  uint32_t rhs_handle = list_push(&ir_alloc.ir_nodes, (void*)rhs);
+
   node.data.IRVar.identifier = ident_s->data.ParserString;
-  node.data.IRVar.type = create_type(t_s->data.ParserString);
-  node.data.IRVar.node = cell_to_ir(ast_var);
+  node.data.IRVar.type = type_handle;
+  node.data.IRVar.node = rhs_handle;
 
   return node;
 }
@@ -83,40 +89,61 @@ IR ir_defun(List *l) {
   IR node;
   node.tag = IRFunc;
 
-  Cell *name = list_grab(l, 1);
-  Cell *ret_type = list_grab(l, 2);
-  Cell *args = list_grab(l, 3);
+  Cell *name = list_get(l, 1);
+  Cell *ret_type = list_get(l, 2);
+  Cell *args = list_get(l, 3);
 
   if (name->tag != ParserSymbol || ret_type->tag != ParserSymbol || args->tag != ParserSExpr)
     exit(2);
 
-  List *body = list_slice(l, 4, l->size);
-  node.data.IRFunc.body = ast_to_ir(body);
-  list_free(body);
+  List *body_ast = list_slice(l, 4, l->size);
+  List body_ir = ast_to_ir(body_ast);
+
+  if (body_ast) {
+    list_free(body_ast);
+    free(body_ast);
+  }
+
+  uint32_t body_handle = list_push(&ir_alloc.lists, (void*)&body_ir);
+  
+  node.data.IRFunc.body = body_handle;
 
   node.data.IRFunc.identifier = name->data.ParserString;
-  node.data.IRFunc.ret_type = create_type(ret_type->data.ParserString);
 
-  List param_types = list_new(sizeof(TypedIdent));
+  Type t = create_type(ret_type->data.ParserString);
+  uint32_t ret_handle = list_push(&ir_alloc.types, (void*)&t);
+
+  node.data.IRFunc.ret_type = ret_handle;
+
+  List param_types_proto = list_new(sizeof(TypedIdent));
+  uint32_t handle = list_push(&ir_alloc.lists, (void*)&param_types_proto);
+
+  List *param_types = list_get(&ir_alloc.lists, handle);
 
   for (int i = 0; i < args->data.ParserSExpr->size; i++) {
-    Cell *type_pair = list_grab(args->data.ParserSExpr, i);
+    Cell *type_pair = list_get(args->data.ParserSExpr, i);
     
     if (type_pair->tag != ParserSExpr || type_pair->data.ParserSExpr->size != 2)
       exit(2);
 
-    Cell *ident = list_grab(type_pair->data.ParserSExpr, 0);
-    Cell *type = list_grab(type_pair->data.ParserSExpr, 1);
+    Cell *ident = list_get(type_pair->data.ParserSExpr, 0);
+    Cell *type = list_get(type_pair->data.ParserSExpr, 1);
 
     if (ident->tag != ParserSymbol || type->tag != ParserSymbol)
       exit(2);
 
-    TypedIdent param = {.ident = ident->data.ParserString, .type = create_type(type->data.ParserString)};
+    Type t = create_type(type->data.ParserString);
+    uint32_t t_handle = list_push(&ir_alloc.types, (void *)&t);
+
+    TypedIdent param = {
+      .ident = ident->data.ParserString,
+      .type = t_handle
+    };
   
-    list_push(&param_types, &param);
+    list_push(param_types, &param);
   }
 
-  node.data.IRFunc.param_types = param_types;
+  node.data.IRFunc.param_types = handle;
 
   return node;
 }
@@ -125,13 +152,24 @@ IR ir_if(List *l) {
   IR node;
   node.tag = IRIf;
 
-  Cell *condition = list_grab(l, 1);
-  Cell *a = list_grab(l, 2);
-  Cell *b = list_grab(l, 3);
+  Cell *condition = list_get(l, 1);
+  Cell *a = list_get(l, 2);
+  Cell *b = list_get(l, 3);
 
-  node.data.IRIf.condition = cell_to_ir(condition);
-  node.data.IRIf.a = cell_to_ir(a);
-  node.data.IRIf.b = cell_to_ir(b);
+  uint32_t handle;
+  IR *ir;
+
+  ir = cell_to_ir(condition);
+  handle = list_push(&ir_alloc.ir_nodes, (void*)ir);
+  node.data.IRIf.condition = handle;
+
+  ir = cell_to_ir(a);
+  handle = list_push(&ir_alloc.ir_nodes, (void*)ir);
+  node.data.IRIf.a = handle;
+
+  ir = cell_to_ir(b);
+  handle = list_push(&ir_alloc.ir_nodes, (void*)ir);
+  node.data.IRIf.b = handle;
 
   return node;
 }
@@ -146,7 +184,7 @@ IR *get_match(List *l) {
     return 0;
   }
     
-  Cell *first_cell = list_grab(l, 0);
+  Cell *first_cell = list_get(l, 0);
   
   if (first_cell->tag != ParserSymbol) {
     exit(2);
@@ -165,15 +203,16 @@ IR *get_match(List *l) {
 }
 
 IR *cell_to_ir(Cell *cell) {
-  IR node;
+  static IR node;
   
   if (cell->tag == ParserSExpr) {
     IR *s_expr_match = get_match(cell->data.ParserSExpr);
 
-    if (!s_expr_match) {
-      puts("SExpr has no match");
-      exit(2);
-    }
+    //if (!s_expr_match) {
+      // TODO: Instead verify that function actually exists but instead just call it
+
+      
+    //}
 
     node = *s_expr_match;
   }
@@ -197,18 +236,14 @@ IR *cell_to_ir(Cell *cell) {
     exit(3);
   }
 
-  IR *result = (IR *)malloc(sizeof(IR));
-
-  *result = node;
-  
-  return result;
+  return &node;
 }
 
 List ast_to_ir(List *ast) {
   List result = list_new(sizeof(IR));
 
   for (int i = 0; i < ast->size; i++) {
-    IR *ir = cell_to_ir(list_grab(ast, i));
+    IR *ir = cell_to_ir(list_get(ast, i));
     list_push(&result, ir);
   }
 

@@ -3,6 +3,9 @@
 #include "util.h"
 #include <stdint.h>
 
+extern IRAlloc ir_alloc;
+extern SysVAlloc sysv_alloc;
+
 uint32_t djb2_hash(String str) {
   uint32_t hash = 5381;
 
@@ -95,19 +98,23 @@ void append_sysv(Environment *env, IR ir) {
     SysV var;
     var.tag = SysVVar;
     var.data.SysVVar.identifier = ir.data.IRVar.identifier;
-    var.data.SysVVar.size = type_size(*ir.data.IRVar.type);
 
-    append_sysv(env, *ir.data.IRVar.node);
+    Type *t = list_get(&ir_alloc.types, ir.data.IRVar.type);
+    IR *node = list_get(&ir_alloc.ir_nodes, ir.data.IRVar.node);
+
+    var.data.SysVVar.size = type_size(*t);
+    append_sysv(env, *node);
 
     env->current_offsets += var.data.SysVVar.size;
     var.data.SysVVar.offset = env->current_offsets;
 
-    SizedOffset *memory = malloc(sizeof(SizedOffset));
-    memory->offset = env->current_offsets;
-    memory->size = type_size(*ir.data.IRVar.type);
+    SizedOffset memory = {.offset = env->current_offsets, .size = type_size(*t)};
+
+    uint32_t handle = list_push(&sysv_alloc.offets, (void*)&memory);
+    SizedOffset *p = list_get(&sysv_alloc.offets, handle);
 
     HM_Add(&env->offsets,
-           djb2_hash(var.data.SysVVar.identifier), (void*)memory);
+           djb2_hash(var.data.SysVVar.identifier), (void*)p);
     
     list_push(&env->sysv_code, (void*)&var);
   }
@@ -120,9 +127,11 @@ void append_sysv(Environment *env, IR ir) {
     enter.data.SysVEnter.label = ir.data.IRFunc.identifier;
 
     list_push(&env->sysv_code, (void *)&enter);
-    void *enter_sysv = list_grab(&env->sysv_code, env->sysv_code.size - 1);
+    void *enter_sysv = list_get(&env->sysv_code, env->sysv_code.size - 1);
 
-    _ir_to_sysv_env(&ir.data.IRFunc.body, env);
+    List *body = list_get(&ir_alloc.lists, ir.data.IRFunc.body);
+
+    _ir_to_sysv_env(body, env);
 
     ((SysV*)enter_sysv)->data.SysVEnter.reserved_bytes = env->current_offsets;
 
@@ -143,11 +152,15 @@ void append_sysv(Environment *env, IR ir) {
 
     env->if_index += 2;
 
-    append_sysv(env, *ir.data.IRIf.condition);
+    IR *condition = list_get(&ir_alloc.ir_nodes, ir.data.IRIf.condition);
+    IR *a = list_get(&ir_alloc.ir_nodes, ir.data.IRIf.a);
+    IR *b = list_get(&ir_alloc.ir_nodes, ir.data.IRIf.b);
+
+    append_sysv(env, *condition);
     list_push(&env->sysv_code, (void*)&if1);
-    append_sysv(env, *ir.data.IRIf.a);
+    append_sysv(env, *a);
     list_push(&env->sysv_code, (void*)&if2);
-    append_sysv(env, *ir.data.IRIf.b);
+    append_sysv(env, *b);
     list_push(&env->sysv_code, (void*)&if3);
   }
 
@@ -173,7 +186,7 @@ void append_sysv(Environment *env, IR ir) {
 
 void _ir_to_sysv_env(List *ir, Environment *env) {
   for (uint32_t i = 0; i < ir->size; i++) {
-    append_sysv(env, *(IR *)list_grab(ir, i));
+    append_sysv(env, *(IR *)list_get(ir, i));
   }
 }
 
@@ -196,7 +209,7 @@ void output_sysv(List sysv) {
   puts("global main\nsection .note.GNU-stack\nsection .text");
 
   for (int i = 0; i < sysv.size; i++) {
-    SysV *instruction = list_grab(&sysv, i);
+    SysV *instruction = list_get(&sysv, i);
 
     if (instruction->tag == SysVVar) {
       uint16_t offset = instruction->data.SysVVar.offset;

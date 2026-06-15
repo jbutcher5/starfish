@@ -17,17 +17,23 @@ enum TypeTag { TYPETAG_PRIMITIVE, TYPETAG_POINTER };
 enum Primitive { PRIMITIVE_VOID, PRIMITIVE_INTEGRAL, PRIMITIVE_CHAR };
 
 typedef struct Type {
-    enum TypeTag tag;
-    union {
-        enum Primitive primitive;
-        uint32_t deref;
-    } detail;
+  enum TypeTag tag;
+  union {
+      enum Primitive primitive;
+      uint32_t deref;
+  } detail;
 } Type;
 
 typedef struct TypedIdent {
-    String ident;
-    uint32_t type;
+  String ident;
+  uint32_t type;
 } TypedIdent;
+
+typedef struct FuncSignature {
+  uint32_t ret_type;
+  uint32_t param_types; // List of TypedIdent
+  String identifier;
+} FuncSignature;
 
 Type create_type(String str);
 uint8_t type_size(Type t);
@@ -51,11 +57,11 @@ typedef struct IR {
 
   union {
     struct IRFunc {
-      uint32_t ret_type;
-      uint32_t param_types; // List of TypedIdent
-      String identifier;
+      FuncSignature type;
       uint32_t body; // List of IR
     } IRFunc;
+
+    FuncSignature IRCCall; 
 
     struct IRVar {
       String identifier;

@@ -1,6 +1,7 @@
 #include "system_v.h"
 #include "ir_gen.h"
 #include "util.h"
+#include <bits/types/cookie_io_functions_t.h>
 #include <stdint.h>
 
 extern IRAlloc ir_alloc;
@@ -13,6 +14,38 @@ uint32_t djb2_hash(String str) {
     hash = 33 * hash + str.start[i];
 
   return hash;
+}
+
+void add_variable(Environment *env, String identifier, uint32_t size) {
+  env->current_offsets += size;
+
+  SizedOffset memory = {.offset = env->current_offsets, .size = size};
+
+  uint32_t handle = list_push(&sysv_alloc.offets, (void*)&memory);
+  SizedOffset *p = list_get(&sysv_alloc.offets, handle);
+
+  uint32_t hash = djb2_hash(identifier);
+
+  HM_Add(&env->offsets,hash, (void*)p);
+
+  list_push(&env->scope, (void*)&hash);
+}
+
+void pop_variable(Environment *env) {
+  uint32_t hash = *(uint32_t*)list_pop(&env->scope);
+  SizedOffset memory;
+
+  if (HM_Contains(&env->offsets, hash)) {
+    memory = *(SizedOffset*)HM_Get(&env->offsets, hash);
+    HM_Remove(&env->offsets, hash);
+  
+    env->current_offsets -= memory.size;
+
+    // Could free the sysv_alloc.offsets here but don't know the handle
+    // and Arena Allocators don't like freeing unless a free list is implemented.
+    // because the memory will just be freed at the end of the program it is probably fine
+    // not to worry about it.
+  }
 }
 
 void show_reg(Register reg) {
@@ -102,38 +135,53 @@ void append_sysv(Environment *env, IR ir) {
     Type *t = list_get(&ir_alloc.types, ir.data.IRVar.type);
     IR *node = list_get(&ir_alloc.ir_nodes, ir.data.IRVar.node);
 
-    var.data.SysVVar.size = type_size(*t);
+    uint32_t size = type_size(*t);
     append_sysv(env, *node);
 
-    env->current_offsets += var.data.SysVVar.size;
+    add_variable(env, ir.data.IRVar.identifier, size);
     var.data.SysVVar.offset = env->current_offsets;
-
-    SizedOffset memory = {.offset = env->current_offsets, .size = type_size(*t)};
-
-    uint32_t handle = list_push(&sysv_alloc.offets, (void*)&memory);
-    SizedOffset *p = list_get(&sysv_alloc.offets, handle);
-
-    HM_Add(&env->offsets,
-           djb2_hash(var.data.SysVVar.identifier), (void*)p);
+    var.data.SysVVar.size = size;
     
     list_push(&env->sysv_code, (void*)&var);
+  }
+
+  else if (ir.tag == IRCCall) {
+    uint32_t key = djb2_hash(ir.data.IRFunc.type.identifier);
+    HM_Add(&env->fn_signatures, key, &ir.data.IRCCall);
   }
 
   else if (ir.tag == IRFunc) {
     // Idk maybe just insert params as IRVars
 
+    // Does offsets need to be a hashmap of hashmaps? 
+
+    uint32_t key = djb2_hash(ir.data.IRFunc.type.identifier);
+    HM_Add(&env->fn_signatures, key, &ir.data.IRFunc.type);
+
     SysV enter;
     enter.tag = SysVEnter;
-    enter.data.SysVEnter.label = ir.data.IRFunc.identifier;
+    enter.data.SysVEnter.label = ir.data.IRFunc.type.identifier;
 
     list_push(&env->sysv_code, (void *)&enter);
     void *enter_sysv = list_get(&env->sysv_code, env->sysv_code.size - 1);
 
     List *body = list_get(&ir_alloc.lists, ir.data.IRFunc.body);
 
-    _ir_to_sysv_env(body, env);
+    uint32_t scope_size = env->scope.size;
+  
+    for (uint32_t i = 0; i < body->size; i++) {
+      append_sysv(env, *(IR *)list_get(body, i));
+    }
 
-    ((SysV*)enter_sysv)->data.SysVEnter.reserved_bytes = env->current_offsets;
+    uint32_t difference = env->scope.size - scope_size;
+
+    ((SysV*)enter_sysv)->data.SysVEnter.reserved_bytes = difference;
+
+    // Cull the scope
+
+    for (; difference; difference--) {
+      pop_variable(env);
+    }
 
     SysV leave = {.tag = SysVLeave};
     list_push(&env->sysv_code, (void *)&leave);
@@ -184,24 +232,24 @@ void append_sysv(Environment *env, IR ir) {
   }
 }
 
-void _ir_to_sysv_env(List *ir, Environment *env) {
-  for (uint32_t i = 0; i < ir->size; i++) {
-    append_sysv(env, *(IR *)list_get(ir, i));
-  }
-}
-
 List ir_to_sysv(List *ir) {
   Environment env = {
     HM_Create(64),
     0,
     list_new(sizeof(SysV)),
-    0
+    HM_Create(64),
+    0,
+    list_new(sizeof(uint32_t))
   };
 
-  _ir_to_sysv_env(ir, &env);
+  for (uint32_t i = 0; i < ir->size; i++) {
+    append_sysv(&env, *(IR *)list_get(ir, i));
+  }
 
   HM_Free(&env.offsets);
-  
+  HM_Free(&env.fn_signatures);
+  list_free(&env.scope);
+
   return env.sysv_code;
 }
 

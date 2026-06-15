@@ -11,7 +11,9 @@ typedef struct {
   HashMap offsets;
   uint16_t current_offsets;
   List sysv_code;
+  HashMap fn_signatures;
   uint64_t if_index;
+  List scope;
 } Environment;
 
 typedef struct {

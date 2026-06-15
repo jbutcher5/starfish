@@ -85,9 +85,9 @@ IR ir_define(List *l) {
   return node;
 }
 
-IR ir_defun(List *l) {
+IR ir_fn(List *l) {
   IR node;
-  node.tag = IRFunc;
+  FuncSignature signature;
 
   Cell *name = list_get(l, 1);
   Cell *ret_type = list_get(l, 2);
@@ -96,24 +96,17 @@ IR ir_defun(List *l) {
   if (name->tag != ParserSymbol || ret_type->tag != ParserSymbol || args->tag != ParserSExpr)
     exit(2);
 
-  List *body_ast = list_slice(l, 4, l->size);
-  List body_ir = ast_to_ir(body_ast);
+  // Construct Function Signature
 
-  if (body_ast) {
-    list_free(body_ast);
-    free(body_ast);
-  }
+  signature.identifier = name->data.ParserString;
 
-  uint32_t body_handle = list_push(&ir_alloc.lists, (void*)&body_ir);
-  
-  node.data.IRFunc.body = body_handle;
-
-  node.data.IRFunc.identifier = name->data.ParserString;
+  // Allocate Return Type
 
   Type t = create_type(ret_type->data.ParserString);
   uint32_t ret_handle = list_push(&ir_alloc.types, (void*)&t);
+  signature.ret_type = ret_handle;
 
-  node.data.IRFunc.ret_type = ret_handle;
+  // Allocate List of Parameters
 
   List param_types_proto = list_new(sizeof(TypedIdent));
   uint32_t handle = list_push(&ir_alloc.lists, (void*)&param_types_proto);
@@ -122,7 +115,7 @@ IR ir_defun(List *l) {
 
   for (int i = 0; i < args->data.ParserSExpr->size; i++) {
     Cell *type_pair = list_get(args->data.ParserSExpr, i);
-    
+          
     if (type_pair->tag != ParserSExpr || type_pair->data.ParserSExpr->size != 2)
       exit(2);
 
@@ -139,11 +132,35 @@ IR ir_defun(List *l) {
       .ident = ident->data.ParserString,
       .type = t_handle
     };
-  
+        
     list_push(param_types, &param);
   }
 
-  node.data.IRFunc.param_types = handle;
+  signature.param_types = handle;
+
+  if (l->size >= 4) {
+    node.tag = IRFunc;
+
+    node.data.IRFunc.type = signature;
+
+    List *body_ast = list_slice(l, 4, l->size);
+    List body_ir = ast_to_ir(body_ast);
+
+    if (body_ast) {
+      list_free(body_ast);
+      free(body_ast);
+    }
+
+    uint32_t body_handle = list_push(&ir_alloc.lists, (void*)&body_ir);
+    
+    node.data.IRFunc.body = body_handle;
+  }
+
+  else if (l->size == 3) {
+   node.tag = IRCCall;
+   
+   node.data.IRCCall = signature;
+  }
 
   return node;
 }
@@ -174,7 +191,7 @@ IR ir_if(List *l) {
   return node;
 }
 
-IR (*sexpr_f[])(List *) = {ir_define, ir_defun, ir_if};
+IR (*sexpr_f[])(List *) = {ir_define, ir_fn, ir_if};
 const char *sexpr_kw[] = {"define", "fn", "if"};
 
 IR *get_match(List *l) {

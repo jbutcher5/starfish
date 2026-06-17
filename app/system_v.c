@@ -126,6 +126,23 @@ void show_reg(Register reg) {
   }
 }
 
+void mov(Register to, Register from) {
+    if (to.size < 4 && !to.offset) {
+      Register to64 = to;
+      to64.size = 4;
+      
+      printf("\n\txor ");
+      show_reg(to64);
+      printf(", ");
+      show_reg(to64);
+    }
+  
+    printf("\n\tmov ");
+    show_reg(to);
+    printf(", ");
+    show_reg(from);
+}
+
 void append_sysv(Environment *env, IR ir) {
   if (ir.tag == IRVar) {
     SysV var;
@@ -175,7 +192,7 @@ void append_sysv(Environment *env, IR ir) {
 
     uint32_t difference = env->scope.size - scope_size;
 
-    ((SysV*)enter_sysv)->data.SysVEnter.reserved_bytes = difference;
+    ((SysV*)enter_sysv)->data.SysVEnter.reserved_bytes = env->current_offsets;
 
     // Cull the scope
 
@@ -263,12 +280,20 @@ void output_sysv(List sysv) {
       uint16_t offset = instruction->data.SysVVar.offset;
       uint16_t size = instruction->data.SysVVar.size;
 
-      printf("\n\tmov [rbp-%d], ", offset);
-      show_reg((Register){.tag = AX, .size = size});
+      Register to = (Register){.tag = BP, .offset = offset};
+      Register from = (Register){.tag = AX, .size = size};
+      
+      mov(to, from);
     }
 
     else if (instruction->tag == SysVLoadVarRef) {
-      printf("\n\tmov rax, [rbp-%d]", instruction->data.SysVLoadVarRef.offset);
+      uint16_t offset = instruction->data.SysVLoadVarRef.offset;
+      uint16_t size = instruction->data.SysVLoadVarRef.size;
+
+      Register to = (Register){.tag = AX, .size = size};
+      Register from = (Register){.tag = BP, .offset = offset};
+
+      mov(to, from);
     }
 
     else if (instruction->tag == SysVImmediate) {
@@ -301,3 +326,4 @@ void output_sysv(List sysv) {
     }
   }
 }
+
